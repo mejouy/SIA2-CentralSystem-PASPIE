@@ -12,6 +12,12 @@ app.use(express.json());
 const integrationRoutes = require('./routes/integration');
 app.use('/api/integration', integrationRoutes);
 
+const authRoutes = require('./routes/auth');
+app.use('/api/auth', authRoutes);
+
+const reportRouter = require('./routes/reports'); // path to this router file
+app.use('/api/reports', reportRouter);
+
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
