@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 
 import { 
-  Hub, CloudDone, CloudOff, Refresh,
+  Hub, CloudDone, CloudOff, Refresh, Logout,
   Campaign, FindInPage, ReportProblem, EventSeat, ListAlt, Assessment
 } from '@mui/icons-material';
 
@@ -39,6 +39,12 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => { fetchMetrics(); }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminName');
+    window.location.reload();
+  };
 
   const handleGenerateReport = () => {
     setGenerating(true);
@@ -105,13 +111,13 @@ export default function AdminDashboard() {
               Smart City Admin Dashboard
             </Typography>
             <Typography variant="body2" color="text.secondary" fontWeight="500">
-              Centralized Systems Integration Control Core (SIA 2)
+              Centralized Systems Integration Control Core
             </Typography>
           </Box>
         </Grid>
         
         {/* Fixed Action Button Stack Block */}
-        <Grid sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, ml: 'auto', p: 0 }}>
+        <Grid sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 1.5, ml: 'auto', p: 0 }}>
           <Button 
             startIcon={<Refresh />} 
             variant="contained" 
@@ -123,6 +129,15 @@ export default function AdminDashboard() {
             }}
           >
             Refresh Streams
+          </Button>
+          <Button 
+            startIcon={<Logout />} 
+            variant="outlined"
+            color="error"
+            onClick={handleLogout}
+            sx={{ borderRadius: 2.5, px: 3, fontWeight: '700', textTransform: 'none', height: '42px' }}
+          >
+            Logout
           </Button>
         </Grid>
       </Grid>

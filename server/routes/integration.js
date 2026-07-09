@@ -1,14 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const { SystemStatus, IntegrationLog } = require('../model/dashboard.model');
+const CentralSubsystemRecord = require('../model/central-data.model');
+
+const VALID_SYSTEMS = ['Announcements', 'LostAndFound', 'Complaints', 'FacilityReservation'];
+
+function isAllowedSubsystem(systemName) {
+  return VALID_SYSTEMS.includes(systemName);
+}
 
 // POST: Ingest data from member systems
 router.post('/ingest/:systemName', async (req, res) => {
   const { systemName } = req.params;
   const payload = req.body;
 
-  const validSystems = ['Announcements', 'LostAndFound', 'Complaints', 'FacilityReservation'];
-  if (!validSystems.includes(systemName)) {
+  if (!isAllowedSubsystem(systemName)) {
     return res.status(400).json({ success: false, message: 'Unknown member subsystem.' });
   }
 
@@ -33,6 +39,13 @@ router.post('/ingest/:systemName', async (req, res) => {
       payloadReceived: payload
     });
 
+    await CentralSubsystemRecord.create({
+      systemName,
+      recordType: payload.recordType || 'integration',
+      scope: payload.scope || 'private',
+      payload: payload.recordData || payload.summaryData || payload
+    });
+
     res.status(200).json({ success: true, message: 'Metrics aggregated safely.' });
   } catch (error) {
     await IntegrationLog.create({
@@ -52,6 +65,22 @@ router.get('/summary', async (req, res) => {
     const systems = await SystemStatus.find({});
     const logs = await IntegrationLog.find().sort({ timestamp: -1 }).limit(10);
     res.status(200).json({ success: true, systems, recentActivity: logs });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET: Return only the records for one subsystem from the central database
+router.get('/subsystem/:systemName', async (req, res) => {
+  const { systemName } = req.params;
+
+  if (!isAllowedSubsystem(systemName)) {
+    return res.status(403).json({ success: false, message: 'Access denied for this subsystem.' });
+  }
+
+  try {
+    const records = await CentralSubsystemRecord.find({ systemName }).sort({ createdAt: -1 }).lean();
+    res.status(200).json({ success: true, systemName, records, count: records.length });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
