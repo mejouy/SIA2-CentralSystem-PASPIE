@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "buildCommand": "cd central-system && npm run build",
+  "builds": [
+    {
+      "src": "server/index.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "central-system/dist/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "server/index.js",
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,OPTIONS,PATCH,DELETE,POST,PUT",
+        "Access-Control-Allow-Headers": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
+      }
+    },
+    {
+      "src": "/favicon.svg",
+      "dest": "central-system/dist/favicon.svg"
+    },
+    {
+      "src": "/icons.svg",
+      "dest": "central-system/dist/icons.svg"
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "central-system/dist/assets/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "central-system/dist/index.html"
+    }
+  ]
+}
