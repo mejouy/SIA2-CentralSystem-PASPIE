@@ -2,23 +2,41 @@ const express = require('express');
 const router = express.Router();
 const { SystemStatus, IntegrationLog } = require('../model/dashboard.model');
 const CentralSubsystemRecord = require('../model/central-data.model');
+const System = require('../model/system.model'); // Links to your new User Management model
 
-const VALID_SYSTEMS = ['Announcements', 'LostAndFound', 'Complaints', 'FacilityReservation'];
-
-function isAllowedSubsystem(systemName) {
-  return VALID_SYSTEMS.includes(systemName);
+// Helper function to dynamically check if a system is registered
+async function isRegisteredSubsystem(systemName) {
+  const system = await System.findOne({ systemName });
+  return !!system;
 }
 
-// POST: Ingest data from member systems
+// POST: Ingest data from member systems (Secured with API Key Verification)
 router.post('/ingest/:systemName', async (req, res) => {
   const { systemName } = req.params;
   const payload = req.body;
-
-  if (!isAllowedSubsystem(systemName)) {
-    return res.status(400).json({ success: false, message: 'Unknown member subsystem.' });
-  }
+  const apiKey = req.headers['x-api-key'];
 
   try {
+    // 1. Authenticate using the User Management system registry
+    const activeSystem = await System.findOne({ systemName, apiKey, status: 'Active' });
+    
+    if (!activeSystem) {
+      // Log the unauthorized attempt for security monitoring
+      await IntegrationLog.create({
+        systemName,
+        endpoint: `/api/integration/ingest/${systemName}`,
+        status: 'FAILURE',
+        payloadReceived: payload,
+        errorMessage: 'Unauthorized: Invalid API key or suspended system status.'
+      });
+      
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied. Invalid API key or inactive subsystem status.' 
+      });
+    }
+
+    // 2. Process data updates if authenticated
     const incrementCount = payload.recordCount || 1;
 
     await SystemStatus.findOneAndUpdate(
@@ -59,7 +77,7 @@ router.post('/ingest/:systemName', async (req, res) => {
   }
 });
 
-// GET: Fetch stats for your MUI frontend
+// GET: Fetch stats for your MUI frontend dashboard
 router.get('/summary', async (req, res) => {
   try {
     const systems = await SystemStatus.find({});
@@ -74,11 +92,12 @@ router.get('/summary', async (req, res) => {
 router.get('/subsystem/:systemName', async (req, res) => {
   const { systemName } = req.params;
 
-  if (!isAllowedSubsystem(systemName)) {
-    return res.status(403).json({ success: false, message: 'Access denied for this subsystem.' });
-  }
-
   try {
+    const systemExists = await isRegisteredSubsystem(systemName);
+    if (!systemExists) {
+      return res.status(404).json({ success: false, message: 'Subsystem registry not found.' });
+    }
+
     const records = await CentralSubsystemRecord.find({ systemName }).sort({ createdAt: -1 }).lean();
     res.status(200).json({ success: true, systemName, records, count: records.length });
   } catch (error) {
@@ -86,19 +105,16 @@ router.get('/subsystem/:systemName', async (req, res) => {
   }
 });
 
-// GET: Fetch all integration logs (for the dedicated Integration Logs UI table)
+// GET: Fetch all integration logs (Satisfies: Integration Logs UI requirement)
 router.get('/logs', async (req, res) => {
   try {
     const { status, systemName } = req.query;
     let query = {};
 
-    // Optional filters for your UI dropdowns
-    if (status) query.status = status; // e.g., SUCCESS or FAILURE
+    if (status) query.status = status; 
     if (systemName) query.systemName = systemName;
 
-    const logs = await IntegrationLog.find(query)
-      .sort({ timestamp: -1 }) // Newest first
-      .lean();
+    const logs = await IntegrationLog.find(query).sort({ timestamp: -1 }).lean();
 
     res.status(200).json({ 
       success: true, 
@@ -110,7 +126,7 @@ router.get('/logs', async (req, res) => {
   }
 });
 
-// GET: Fetch all synced transactions from all subsystems
+// GET: Fetch all synced transactions (Satisfies: Transaction Monitoring UI requirement)
 router.get('/transactions', async (req, res) => {
   try {
     const { systemName } = req.query;
@@ -120,9 +136,7 @@ router.get('/transactions', async (req, res) => {
       query.systemName = systemName;
     }
 
-    const transactions = await CentralSubsystemRecord.find(query)
-      .sort({ createdAt: -1 }) // Newest transactions first
-      .lean();
+    const transactions = await CentralSubsystemRecord.find(query).sort({ createdAt: -1 }).lean();
 
     res.status(200).json({
       success: true,
@@ -134,7 +148,7 @@ router.get('/transactions', async (req, res) => {
   }
 });
 
-// DELETE: Clear all logs (highly useful utility for testing/clean slate)
+// DELETE: Clear all logs for maintenance/testing
 router.delete('/logs/clear', async (req, res) => {
   try {
     await IntegrationLog.deleteMany({});

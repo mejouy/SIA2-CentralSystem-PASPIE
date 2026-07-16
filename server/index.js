@@ -11,11 +11,15 @@ app.use(express.json());
 const integrationRoutes = require('./routes/integration');
 app.use('/api/integration', integrationRoutes);
 
+const systemRoutes = require('./routes/systems');
+app.use('/api/systems', systemRoutes);
+
 const authRoutes = require('./routes/auth');
 app.use('/api/auth', authRoutes);
 
 const reportRouter = require('./routes/reports');
 app.use('/api/reports', reportRouter);
+app.use('/api', reportRouter); // Maps /api/city-summary directly!
 
 // --- Isolated Subsystem Database Folders ---
 const announcementRoutes = require('./routes/announcements');
