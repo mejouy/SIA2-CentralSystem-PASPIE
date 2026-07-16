@@ -86,4 +86,62 @@ router.get('/subsystem/:systemName', async (req, res) => {
   }
 });
 
+// GET: Fetch all integration logs (for the dedicated Integration Logs UI table)
+router.get('/logs', async (req, res) => {
+  try {
+    const { status, systemName } = req.query;
+    let query = {};
+
+    // Optional filters for your UI dropdowns
+    if (status) query.status = status; // e.g., SUCCESS or FAILURE
+    if (systemName) query.systemName = systemName;
+
+    const logs = await IntegrationLog.find(query)
+      .sort({ timestamp: -1 }) // Newest first
+      .lean();
+
+    res.status(200).json({ 
+      success: true, 
+      count: logs.length, 
+      logs 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET: Fetch all synced transactions from all subsystems
+router.get('/transactions', async (req, res) => {
+  try {
+    const { systemName } = req.query;
+    let query = {};
+
+    if (systemName && systemName !== 'ALL') {
+      query.systemName = systemName;
+    }
+
+    const transactions = await CentralSubsystemRecord.find(query)
+      .sort({ createdAt: -1 }) // Newest transactions first
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      count: transactions.length,
+      transactions
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE: Clear all logs (highly useful utility for testing/clean slate)
+router.delete('/logs/clear', async (req, res) => {
+  try {
+    await IntegrationLog.deleteMany({});
+    res.status(200).json({ success: true, message: 'All integration logs cleared successfully.' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;

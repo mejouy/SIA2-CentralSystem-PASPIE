@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import generateIntegrationPDF from '../utils/reportGenerator';
 import { apiUrl } from '../utils/api';
 import {
@@ -6,12 +6,12 @@ import {
   Box, Chip, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, CircularProgress, Button,
   Divider, CardHeader, Avatar, Dialog, DialogTitle, DialogContent,
-  DialogActions, IconButton, Stack
+  DialogActions, IconButton, Stack, Select, MenuItem, FormControl, InputLabel
 } from '@mui/material';
 
 import {
   Hub, CloudDone, CloudOff, Refresh, Logout, Close,
-  Campaign, FindInPage, ReportProblem, EventSeat, ListAlt, Assessment
+  Campaign, FindInPage, ReportProblem, EventSeat, ListAlt, Assessment, DeleteSweep
 } from '@mui/icons-material';
 
 const CHOSEN_SUBSYSTEMS = [
@@ -46,9 +46,6 @@ const CHOSEN_SUBSYSTEMS = [
 ];
 
 // ---- Design tokens -------------------------------------------------------
-// Civic / municipal identity: a calm navy authority color on a warm neutral
-// background, borrowed from official city letterheads rather than a generic
-// SaaS admin palette. Status is read through simple color, not motion.
 const COLOR = {
   bg: '#F6F7F9',
   panel: '#FFFFFF',
@@ -72,26 +69,80 @@ const FONT_BODY = "'IBM Plex Sans', 'Segoe UI', sans-serif";
 const FONT_MONO = "'IBM Plex Mono', 'Roboto Mono', monospace";
 
 export default function AdminDashboard() {
-  const [data, setData] = useState({ systems: [], recentActivity: [] });
+  const [data, setData] = useState({ 
+    systems: [], 
+    recentActivity: [], 
+    breakdown: [] 
+  });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  
+  // Filter States for Integration Logs
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [systemFilter, setSystemFilter] = useState('ALL');
+  
+  // Dialog selection managers
   const [selectedSystem, setSelectedSystem] = useState(null);
+  const [viewingPayload, setViewingPayload] = useState(null);
 
-  const fetchMetrics = () => {
+  // Memoized metrics fetcher to avoid component recreations and hook dependency warnings
+  const fetchMetrics = useCallback(() => {
     setLoading(true);
-    fetch(apiUrl('/api/integration/summary'))
-      .then(res => res.json())
-      .then(resData => {
-        if (resData.success) setData(resData);
-        setLoading(false);
+    
+    // 1. Fetch dashboard subsystem breakdown states
+    const fetchStats = fetch(apiUrl('/api/city-summary')).then(res => {
+      if (!res.ok) throw new Error('Failed to fetch city summary stats.');
+      return res.json();
+    });
+    
+    // 2. Fetch integration logs with dynamic query parameters
+    let logsUrl = '/api/integration/logs';
+    const params = [];
+    if (statusFilter !== 'ALL') params.push(`status=${statusFilter}`);
+    if (systemFilter !== 'ALL') params.push(`systemName=${systemFilter}`);
+    if (params.length > 0) logsUrl += `?${params.join('&')}`;
+    
+    const fetchLogs = fetch(apiUrl(logsUrl)).then(res => {
+      if (!res.ok) throw new Error('Failed to fetch integration logs.');
+      return res.json();
+    });
+
+    Promise.all([fetchStats, fetchLogs])
+      .then(([statsRes, logsRes]) => {
+        if (statsRes.success) {
+          setData({
+            systems: statsRes.systems || [],
+            breakdown: statsRes.breakdown || [],
+            recentActivity: logsRes.success ? logsRes.logs : (statsRes.recentActivity || [])
+          });
+        }
       })
       .catch(err => {
-        console.error("Sync read fail:", err);
+        console.error("Dashboard sync metrics failure:", err);
+      })
+      .finally(() => {
         setLoading(false);
       });
-  };
+  }, [statusFilter, systemFilter]);
 
-  useEffect(() => { fetchMetrics(); }, []);
+  useEffect(() => { 
+    fetchMetrics(); 
+  }, [fetchMetrics]);
+
+  const handleClearLogs = () => {
+    if (window.confirm("Are you sure you want to purge all Integration Logs from the gateway? This cannot be undone.")) {
+      fetch(apiUrl('/api/integration/logs/clear'), { method: 'DELETE' })
+        .then(res => res.json())
+        .then(resData => {
+          if (resData.success) {
+            fetchMetrics();
+          } else {
+            alert(resData.message || "Failed to clear gateway log history.");
+          }
+        })
+        .catch(err => console.error("Error clearing logs:", err));
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
@@ -101,7 +152,7 @@ export default function AdminDashboard() {
 
   const handleGenerateReport = () => {
     setGenerating(true);
-    fetch(apiUrl('/api/reports/city-summary'))
+    fetch(apiUrl('/api/city-summary'))
       .then(res => {
         if (!res.ok) throw new Error(`Server responded with status ${res.status}`);
         return res.json();
@@ -111,8 +162,17 @@ export default function AdminDashboard() {
           const chosenMap = CHOSEN_SUBSYSTEMS.reduce((acc, s) => { acc[s.id] = s.label; return acc; }, {});
           const payload = {
             ...resData,
-            systems: data.systems,
-            recentActivity: resData.recentActivity || [],
+            systems: CHOSEN_SUBSYSTEMS.map(sys => {
+              const liveData = resData.breakdown?.find(s => s._id === sys.id);
+              return {
+                systemName: sys.id,
+                displayName: sys.label,
+                leader: sys.leader,
+                isOnline: !!liveData,
+                totalRecordsCount: liveData ? liveData.totalSyncs : 0
+              };
+            }),
+            recentActivity: data.recentActivity || [],
             chosenMap
           };
           try {
@@ -132,11 +192,11 @@ export default function AdminDashboard() {
   };
 
   const mappedSystems = CHOSEN_SUBSYSTEMS.map(staticSys => {
-    const liveData = data.systems.find(s => s.systemName === staticSys.id);
+    const liveData = data.breakdown.find(s => s._id === staticSys.id);
     return {
       ...staticSys,
-      isOnline: liveData ? liveData.isOnline : false,
-      totalRecordsCount: liveData ? liveData.totalRecordsCount : 0,
+      isOnline: !!liveData,
+      totalRecordsCount: liveData ? liveData.totalSyncs : 0,
       lastHeartbeat: liveData ? liveData.lastHeartbeat : null
     };
   });
@@ -153,12 +213,9 @@ export default function AdminDashboard() {
 
   return (
     <Box sx={{ width: '100%', minHeight: '100vh', bgcolor: COLOR.bg, boxSizing: 'border-box', margin: 0, fontFamily: FONT_BODY }}>
-
-      {/* Letterhead strip */}
       <Box sx={{ height: 4, width: '100%', bgcolor: COLOR.navy }} />
 
       <Box sx={{ p: { xs: 2, md: 4 } }}>
-
         {/* Header */}
         <Box sx={{
           display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center',
@@ -173,7 +230,7 @@ export default function AdminDashboard() {
                 fontFamily: FONT_MONO, color: COLOR.textMuted, fontSize: '0.68rem',
                 letterSpacing: '1.5px', textTransform: 'uppercase', mb: 0.25
               }}>
-                Systems Integration &amp; Architecture
+                Systems Integration {"&"} Architecture
               </Typography>
               <Typography sx={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: { xs: '1.3rem', md: '1.55rem' }, color: COLOR.textPrimary, letterSpacing: '-0.2px' }}>
                 Smart City Admin Dashboard
@@ -227,9 +284,9 @@ export default function AdminDashboard() {
           <Hub sx={{ fontSize: 14, color: COLOR.navy }} /> Cluster Subsystem Nodes
         </Typography>
 
-        <Grid container spacing={2.5} sx={{ mb: 4, width: '100%', ml: 0, mt: 0 }}>
+        <Grid container spacing={{ xs: 2, md: 2.5 }} sx={{ mb: 4 }}>
           {mappedSystems.map((sys) => (
-            <Grid key={sys.id} xs={12} sm={6} md={3} sx={{ p: 1.25 }}>
+            <Grid item key={sys.id} xs={12} sm={6} md={3}>
               <Card
                 onClick={() => setSelectedSystem(sys)}
                 sx={{
@@ -329,14 +386,66 @@ export default function AdminDashboard() {
           </Button>
         </Paper>
 
-        {/* Log gateway */}
-        <Typography sx={{
-          fontFamily: FONT_MONO, color: COLOR.textMuted, fontSize: '0.7rem',
-          letterSpacing: '1.5px', textTransform: 'uppercase', mb: 2, display: 'flex', alignItems: 'center', gap: 1
-        }}>
-          <ListAlt sx={{ fontSize: 14, color: COLOR.navy }} /> Central Log Gateway
-        </Typography>
+        {/* Integration Logs Filter Panel */}
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 1.5 }}>
+          <Typography sx={{
+            fontFamily: FONT_MONO, color: COLOR.textMuted, fontSize: '0.7rem',
+            letterSpacing: '1.5px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 1
+          }}>
+            <ListAlt sx={{ fontSize: 14, color: COLOR.navy }} /> Central Log Gateway
+          </Typography>
 
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            {/* System Filter Dropdown */}
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel sx={{ fontFamily: FONT_BODY, fontSize: '0.8rem' }}>Origin Subsystem</InputLabel>
+              <Select
+                value={systemFilter}
+                onChange={(e) => setSystemFilter(e.target.value)}
+                label="Origin Subsystem"
+                sx={{ borderRadius: 1.5, fontFamily: FONT_BODY, fontSize: '0.8rem', bgcolor: COLOR.panel }}
+              >
+                <MenuItem value="ALL">All Subsystems</MenuItem>
+                {CHOSEN_SUBSYSTEMS.map(sys => (
+                  <MenuItem key={sys.id} value={sys.id}>{sys.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {/* Status Filter Dropdown */}
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel sx={{ fontFamily: FONT_BODY, fontSize: '0.8rem' }}>Gateway Status</InputLabel>
+              <Select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                label="Gateway Status"
+                sx={{ borderRadius: 1.5, fontFamily: FONT_BODY, fontSize: '0.8rem', bgcolor: COLOR.panel }}
+              >
+                <MenuItem value="ALL">All States</MenuItem>
+                <MenuItem value="SUCCESS">Success</MenuItem>
+                <MenuItem value="FAILURE">Failure</MenuItem>
+              </Select>
+            </FormControl>
+
+            {/* Clear Logs Button */}
+            <Button
+              startIcon={<DeleteSweep />}
+              onClick={handleClearLogs}
+              variant="outlined"
+              color="error"
+              size="small"
+              sx={{
+                borderRadius: 1.5, height: 38, textTransform: 'none', fontWeight: 600,
+                fontFamily: FONT_BODY, borderColor: COLOR.border, color: COLOR.textSecondary,
+                '&:hover': { borderColor: COLOR.danger, color: COLOR.danger, bgcolor: COLOR.dangerBg }
+              }}
+            >
+              Clear Log History
+            </Button>
+          </Box>
+        </Box>
+
+        {/* Logs Table */}
         <TableContainer component={Paper} sx={{ borderRadius: 2, overflow: 'hidden', bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}` }}>
           <Table>
             <TableHead sx={{ backgroundColor: COLOR.panelTint }}>
@@ -353,42 +462,56 @@ export default function AdminDashboard() {
                 <TableRow>
                   <TableCell colSpan={4} align="center" sx={{ py: 8, borderColor: COLOR.border }}>
                     <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.85rem', color: COLOR.textMuted, fontStyle: 'italic' }}>
-                      No stream activity intercepted yet. Waiting for member node handshakes&hellip;
+                      No stream activity matches selected filters. Waiting for member node handshakes...
                     </Typography>
                   </TableCell>
                 </TableRow>
               ) : (
-                data.recentActivity.map((log) => (
-                  <TableRow key={log._id} hover sx={{ '&:hover': { bgcolor: COLOR.panelTint } }}>
-                    <TableCell sx={{ fontFamily: FONT_MONO, fontSize: '0.78rem', color: COLOR.textSecondary, borderColor: COLOR.border }}>
-                      {new Date(log.timestamp).toLocaleTimeString()}
-                    </TableCell>
-                    <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: '0.85rem', color: COLOR.textPrimary, textAlign: 'left', borderColor: COLOR.border }}>
-                      {CHOSEN_SUBSYSTEMS.find(sys => sys.id === log.systemName)?.label || log.systemName.replace(/([A-Z])/g, ' $1').trim()}
-                    </TableCell>
-                    <TableCell sx={{ borderColor: COLOR.border }}>
-                      <Chip
-                        label={log.status}
-                        size="small"
-                        sx={{
-                          fontWeight: 600, fontFamily: FONT_BODY, borderRadius: '6px', fontSize: '0.7rem',
-                          color: log.status === 'SUCCESS' ? COLOR.success : COLOR.danger,
-                          bgcolor: log.status === 'SUCCESS' ? COLOR.successBg : COLOR.dangerBg,
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell sx={{ borderColor: COLOR.border }}>
-                      <Box component="code" sx={{
-                        fontFamily: FONT_MONO, fontSize: '0.75rem', bgcolor: COLOR.panelTint, p: '4px 10px',
-                        borderRadius: 1.5, color: COLOR.textSecondary, display: 'inline-block',
-                        maxWidth: '450px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        border: `1px solid ${COLOR.border}`
-                      }}>
-                        {JSON.stringify(log.payloadReceived?.summaryData || {})}
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                ))
+                data.recentActivity.map((log) => {
+                  const timestampValue = log.timestamp || log.createdAt;
+                  let formattedTime = 'N/A';
+                  if (timestampValue) {
+                    const date = new Date(timestampValue);
+                    formattedTime = isNaN(date.getTime()) ? 'N/A' : date.toLocaleTimeString();
+                  }
+
+                  return (
+                    <TableRow key={log._id || Math.random()} hover sx={{ '&:hover': { bgcolor: COLOR.panelTint } }}>
+                      <TableCell sx={{ fontFamily: FONT_MONO, fontSize: '0.78rem', color: COLOR.textSecondary, borderColor: COLOR.border }}>
+                        {formattedTime}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: '0.85rem', color: COLOR.textPrimary, textAlign: 'left', borderColor: COLOR.border }}>
+                        {CHOSEN_SUBSYSTEMS.find(sys => sys.id === log.systemName)?.label || log.systemName?.replace(/([A-Z])/g, ' $1').trim()}
+                      </TableCell>
+                      <TableCell sx={{ borderColor: COLOR.border }}>
+                        <Chip
+                          label={log.status}
+                          size="small"
+                          sx={{
+                            fontWeight: 600, fontFamily: FONT_BODY, borderRadius: '6px', fontSize: '0.7rem',
+                            color: log.status === 'SUCCESS' ? COLOR.success : COLOR.danger,
+                            bgcolor: log.status === 'SUCCESS' ? COLOR.successBg : COLOR.dangerBg,
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ borderColor: COLOR.border }}>
+                        <Box 
+                          onClick={() => setViewingPayload(log)}
+                          component="code" 
+                          sx={{
+                            fontFamily: FONT_MONO, fontSize: '0.75rem', bgcolor: COLOR.panelTint, p: '4px 10px',
+                            borderRadius: 1.5, color: COLOR.textSecondary, display: 'inline-block',
+                            maxWidth: '450px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            border: `1px solid ${COLOR.border}`, cursor: 'pointer',
+                            '&:hover': { borderColor: COLOR.navy, bgcolor: COLOR.panel, color: COLOR.navy }
+                          }}
+                        >
+                          {JSON.stringify(log.payloadReceived || {})}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -485,6 +608,77 @@ export default function AdminDashboard() {
                 }}
               >
                 Close
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* Dynamic JSON Payload Inspector Dialog */}
+      <Dialog
+        open={Boolean(viewingPayload)}
+        onClose={() => setViewingPayload(null)}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{ sx: { borderRadius: 2.5, border: `1px solid ${COLOR.border}` } }}
+      >
+        {viewingPayload && (
+          <>
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography sx={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: '1.05rem', color: COLOR.textPrimary }}>
+                  Payload Diagnostic View
+                </Typography>
+                <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.75rem', color: COLOR.textMuted }}>
+                  Integration Log ID: {viewingPayload._id}
+                </Typography>
+              </Box>
+              <IconButton onClick={() => setViewingPayload(null)} sx={{ color: COLOR.textMuted }}>
+                <Close fontSize="small" />
+              </IconButton>
+            </DialogTitle>
+
+            <Divider sx={{ borderColor: COLOR.border }} />
+
+            <DialogContent sx={{ bgcolor: COLOR.bg, p: 2 }}>
+              {viewingPayload.status === 'FAILURE' && viewingPayload.errorMessage && (
+                <Box sx={{ p: 1.5, mb: 2, borderRadius: 1.5, bgcolor: COLOR.dangerBg, border: `1px solid ${COLOR.danger}` }}>
+                  <Typography sx={{ fontFamily: FONT_BODY, fontWeight: 700, fontSize: '0.75rem', color: COLOR.danger, mb: 0.5 }}>
+                    Runtime Crash Context:
+                  </Typography>
+                  <Typography sx={{ fontFamily: FONT_MONO, fontSize: '0.75rem', color: COLOR.danger }}>
+                    {viewingPayload.errorMessage}
+                  </Typography>
+                </Box>
+              )}
+              
+              <Box sx={{ p: 2, borderRadius: 1.5, bgcolor: '#1E1E1E', border: '1px solid #333', overflowX: 'auto' }}>
+                <Typography component="pre" sx={{ 
+                  fontFamily: FONT_MONO, 
+                  fontSize: '0.75rem', 
+                  color: '#A9B7C6', 
+                  margin: 0, 
+                  textAlign: 'left',
+                  whiteSpace: 'pre-wrap', 
+                  wordBreak: 'break-all' 
+                }}>
+                  {JSON.stringify(viewingPayload.payloadReceived || {}, null, 2)}
+                </Typography>
+              </Box>
+            </DialogContent>
+
+            <Divider sx={{ borderColor: COLOR.border }} />
+
+            <DialogActions sx={{ px: 3, pb: 2.5 }}>
+              <Button
+                onClick={() => setViewingPayload(null)}
+                variant="outlined"
+                sx={{
+                  textTransform: 'none', fontWeight: 600, borderRadius: 1.5,
+                  fontFamily: FONT_BODY, color: COLOR.textSecondary, borderColor: COLOR.border
+                }}
+              >
+                Dismiss
               </Button>
             </DialogActions>
           </>

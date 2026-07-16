@@ -6,7 +6,7 @@ const { IntegrationLog } = require('../model/dashboard.model');
 
 router.get('/city-summary', async (req, res) => {
   try {
-    // 1. Fetch total counts (Updated 'FAILED' to 'FAILURE' to match schema enum definition)
+    // 1. Fetch total counts
     const totalLogs = await IntegrationLog.countDocuments();
     const successfulLogs = await IntegrationLog.countDocuments({ status: 'SUCCESS' });
     const failedLogs = await IntegrationLog.countDocuments({ status: 'FAILURE' });
@@ -14,15 +14,40 @@ router.get('/city-summary', async (req, res) => {
     // 2. Calculate system-wide reliability percentage
     const reliabilityRate = totalLogs > 0 ? ((successfulLogs / totalLogs) * 100).toFixed(1) : 100;
 
-    // 3. Aggregate total records captured broken down by subsystem
+    // 3. Fetch recent activity (Crucial for the PDF generator's Log Appendix)
+    const recentActivity = await IntegrationLog.find()
+      .sort({ timestamp: -1 })
+      .limit(40)
+      .lean();
+
+    // 4. Aggregate total records, errors, avg payload size, and last active timestamp per subsystem
     const subsystemAggregates = await IntegrationLog.aggregate([
       {
         $group: {
           _id: '$systemName',
           totalSyncs: { $sum: 1 },
           failures: {
-            // Evaluates conditional matches strictly against the 'FAILURE' identifier
             $sum: { $cond: [{ $eq: ['$status', 'FAILURE'] }, 1, 0] }
+          },
+          lastHeartbeat: { $max: '$timestamp' },
+          // Safely calculates average BSON size of the payload object and converts it to KB
+          avgPayloadBytes: { 
+            $avg: { $cond: [{ $ifNull: ['$payloadReceived', false] }, { $bsonSize: '$payloadReceived' }, 0] } 
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          totalSyncs: 1,
+          failures: 1,
+          lastHeartbeat: 1,
+          avgPayloadSize: {
+            $cond: [
+              { $gt: ['$avgPayloadBytes', 0] },
+              { $concat: [{ $toString: { $round: [{ $divide: ['$avgPayloadBytes', 1024] }, 1] } }, ' KB'] },
+              '0 KB'
+            ]
           }
         }
       }
@@ -38,7 +63,8 @@ router.get('/city-summary', async (req, res) => {
         failedLogs,
         reliabilityRate: `${reliabilityRate}%`
       },
-      breakdown: subsystemAggregates
+      breakdown: subsystemAggregates,
+      recentActivity // Sent down to feed the PDF appendix
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

@@ -1,7 +1,6 @@
 {
   "version": 2,
   "buildCommand": "cd central-system && npm run build",
-  "outputDirectory": "central-system/dist",
   "builds": [
     {
       "src": "server/index.js",
