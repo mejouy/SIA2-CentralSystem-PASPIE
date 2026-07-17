@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom'; // Added for routing
 import generateIntegrationPDF from '../utils/reportGenerator';
 import { apiUrl } from '../utils/api';
 import {
@@ -6,12 +7,13 @@ import {
   Box, Chip, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, CircularProgress, Button,
   Divider, CardHeader, Avatar, Dialog, DialogTitle, DialogContent,
-  DialogActions, IconButton, Stack, Select, MenuItem, FormControl, InputLabel
+  DialogActions, IconButton, Stack, Select, MenuItem, FormControl, InputLabel, Alert
 } from '@mui/material';
 
 import {
   Hub, CloudDone, CloudOff, Refresh, Logout, Close,
-  Campaign, FindInPage, ReportProblem, EventSeat, ListAlt, Assessment, DeleteSweep
+  Campaign, FindInPage, ReportProblem, EventSeat, ListAlt, Assessment, DeleteSweep,
+  Settings // Added for the System Management button
 } from '@mui/icons-material';
 
 const CHOSEN_SUBSYSTEMS = [
@@ -69,6 +71,7 @@ const FONT_BODY = "'IBM Plex Sans', 'Segoe UI', sans-serif";
 const FONT_MONO = "'IBM Plex Mono', 'Roboto Mono', monospace";
 
 export default function AdminDashboard() {
+  const navigate = useNavigate(); // Hook initialized
   const [data, setData] = useState({ 
     systems: [], 
     recentActivity: [], 
@@ -76,6 +79,7 @@ export default function AdminDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
   
   // Filter States for Integration Logs
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -85,9 +89,10 @@ export default function AdminDashboard() {
   const [selectedSystem, setSelectedSystem] = useState(null);
   const [viewingPayload, setViewingPayload] = useState(null);
 
-  // Memoized metrics fetcher to avoid component recreations and hook dependency warnings
+  // Fetch metrics helper
   const fetchMetrics = useCallback(() => {
     setLoading(true);
+    setErrorMessage(null);
     
     // 1. Fetch dashboard subsystem breakdown states
     const fetchStats = fetch(apiUrl('/api/city-summary')).then(res => {
@@ -115,10 +120,13 @@ export default function AdminDashboard() {
             breakdown: statsRes.breakdown || [],
             recentActivity: logsRes.success ? logsRes.logs : (statsRes.recentActivity || [])
           });
+        } else {
+          throw new Error(statsRes.message || "Failed to retrieve active cluster statistics.");
         }
       })
       .catch(err => {
         console.error("Dashboard sync metrics failure:", err);
+        setErrorMessage(err.message || "An unexpected error occurred while syncing cluster components.");
       })
       .finally(() => {
         setLoading(false);
@@ -216,6 +224,12 @@ export default function AdminDashboard() {
       <Box sx={{ height: 4, width: '100%', bgcolor: COLOR.navy }} />
 
       <Box sx={{ p: { xs: 2, md: 4 } }}>
+        {errorMessage && (
+          <Alert severity="error" sx={{ mb: 3, borderRadius: 1.5, fontFamily: FONT_BODY }} onClose={() => setErrorMessage(null)}>
+            {errorMessage}
+          </Alert>
+        )}
+
         {/* Header */}
         <Box sx={{
           display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center',
@@ -248,9 +262,11 @@ export default function AdminDashboard() {
                 {onlineCount} of {mappedSystems.length} systems online
               </Typography>
             </Box>
+
+            {/* System Management Route Navigation */}
             <Button
-              startIcon={<Refresh />}
-              onClick={fetchMetrics}
+              startIcon={<Settings />}
+              onClick={() => navigate('/system-management')}
               variant="contained"
               disableElevation
               sx={{
@@ -259,8 +275,24 @@ export default function AdminDashboard() {
                 '&:hover': { bgcolor: COLOR.navyDark }
               }}
             >
+              System Management
+            </Button>
+
+            {/* Refresh Button - Balanced to Outlined */}
+            <Button
+              startIcon={<Refresh />}
+              onClick={fetchMetrics}
+              variant="outlined"
+              sx={{
+                borderRadius: 1.5, px: 2.5, height: 40, fontWeight: 600, textTransform: 'none',
+                fontFamily: FONT_BODY, color: COLOR.textSecondary, borderColor: COLOR.border,
+                '&:hover': { borderColor: COLOR.navy, color: COLOR.navy }
+              }}
+            >
               Refresh
             </Button>
+
+            {/* Logout Button */}
             <Button
               startIcon={<Logout />}
               onClick={handleLogout}
@@ -467,7 +499,7 @@ export default function AdminDashboard() {
                   </TableCell>
                 </TableRow>
               ) : (
-                data.recentActivity.map((log) => {
+                data.recentActivity.map((log, index) => {
                   const timestampValue = log.timestamp || log.createdAt;
                   let formattedTime = 'N/A';
                   if (timestampValue) {
@@ -476,7 +508,7 @@ export default function AdminDashboard() {
                   }
 
                   return (
-                    <TableRow key={log._id || Math.random()} hover sx={{ '&:hover': { bgcolor: COLOR.panelTint } }}>
+                    <TableRow key={log._id || index} hover sx={{ '&:hover': { bgcolor: COLOR.panelTint } }}>
                       <TableCell sx={{ fontFamily: FONT_MONO, fontSize: '0.78rem', color: COLOR.textSecondary, borderColor: COLOR.border }}>
                         {formattedTime}
                       </TableCell>

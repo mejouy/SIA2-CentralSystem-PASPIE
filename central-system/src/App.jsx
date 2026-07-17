@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import AdminDashboard from './pages/AdminDashboard'; // Adjust path if it's in a subfolder
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import AdminDashboard from './pages/AdminDashboard';
+import SystemManagement from './pages/SystemManagement';
 import Login from './components/Login';
-
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -28,6 +29,15 @@ export default function App() {
     return <Login onLoginSuccess={checkToken} />;
   }
 
-  // Show full dashboard once authenticated
-  return <AdminDashboard />;
+  // Authenticated: enable routing between the dashboard and its subpages
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<AdminDashboard />} />
+        <Route path="/system-management" element={<SystemManagement />} />
+        {/* Any unknown path falls back to the dashboard instead of a blank screen */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
