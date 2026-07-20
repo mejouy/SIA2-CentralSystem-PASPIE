@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom'; // Added for routing
+import { useNavigate } from 'react-router-dom';
 import generateIntegrationPDF from '../utils/reportGenerator';
 import { apiUrl } from '../utils/api';
 import {
@@ -7,13 +7,13 @@ import {
   Box, Chip, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, CircularProgress, Button,
   Divider, CardHeader, Avatar, Dialog, DialogTitle, DialogContent,
-  DialogActions, IconButton, Stack, Select, MenuItem, FormControl, InputLabel, Alert
+  IconButton, Stack, Select, MenuItem, FormControl, InputLabel, Alert, Tooltip
 } from '@mui/material';
 
 import {
   Hub, CloudDone, CloudOff, Refresh, Logout, Close,
   Campaign, FindInPage, ReportProblem, EventSeat, ListAlt, Assessment, DeleteSweep,
-  Settings // Added for the System Management button
+  Settings, FilterAltOff
 } from '@mui/icons-material';
 
 const CHOSEN_SUBSYSTEMS = [
@@ -70,21 +70,93 @@ const FONT_DISPLAY = "'IBM Plex Sans', 'Segoe UI', sans-serif";
 const FONT_BODY = "'IBM Plex Sans', 'Segoe UI', sans-serif";
 const FONT_MONO = "'IBM Plex Mono', 'Roboto Mono', monospace";
 
+// A defined type scale instead of ad hoc rem values scattered per element.
+const TYPE = {
+  eyebrow: { fontFamily: FONT_MONO, fontSize: '0.7rem', letterSpacing: '1.5px', textTransform: 'uppercase' },
+  label: { fontFamily: FONT_BODY, fontSize: '0.78rem' },
+  body: { fontFamily: FONT_BODY, fontSize: '0.85rem' },
+  mono: { fontFamily: FONT_MONO, fontSize: '0.78rem' },
+  cardTitle: { fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: '0.92rem' },
+  metric: { fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: '1.15rem' },
+  sectionTitle: { fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: '1rem' },
+  pageTitle: { fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: '1.4rem', letterSpacing: '-0.2px' },
+  dialogTitle: { fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: '1.05rem' },
+};
+
+const SHADOW = { card: '0 6px 16px rgba(27,58,92,0.08)' };
+
+// Branded dropdown menu paper, applied to every Select so the open menu matches the app shell
+const menuPaperProps = {
+  PaperProps: {
+    sx: {
+      mt: 0.5, borderRadius: 1.5, border: `1px solid ${COLOR.border}`,
+      boxShadow: '0 8px 24px rgba(27,58,92,0.12)'
+    }
+  }
+};
+
+// Reusable select styling so both filter dropdowns match the app's field language
+const selectSx = {
+  borderRadius: 1.5, fontFamily: FONT_BODY, fontSize: '0.82rem', bgcolor: COLOR.panel,
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: COLOR.border },
+  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: COLOR.neutral },
+  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: COLOR.navy, borderWidth: '1px' },
+};
+const selectLabelSx = { fontFamily: FONT_BODY, fontSize: '0.82rem', '&.Mui-focused': { color: COLOR.navy } };
+const menuItemSx = { fontFamily: FONT_BODY, fontSize: '0.85rem' };
+
+// Shared button treatments so every action button in the header/toolbars reads consistently
+const btnBase = {
+  borderRadius: 1.5, height: 40, fontWeight: 600, textTransform: 'none', fontFamily: FONT_BODY,
+};
+const btnOutlinedNeutral = {
+  ...btnBase, px: 2.25, color: COLOR.textSecondary, borderColor: COLOR.border,
+  '&:hover': { borderColor: COLOR.navy, color: COLOR.navy, bgcolor: COLOR.panel },
+};
+const btnOutlinedDanger = {
+  ...btnBase, px: 2.25, color: COLOR.textSecondary, borderColor: COLOR.border,
+  '&:hover': { borderColor: COLOR.danger, color: COLOR.danger, bgcolor: COLOR.dangerBg },
+};
+const btnOutlinedNavy = {
+  ...btnBase, px: 2.25, color: COLOR.navy, borderColor: COLOR.navy,
+  '&:hover': { bgcolor: COLOR.navy, color: '#fff' },
+};
+const btnPrimary = {
+  ...btnBase, px: 3, height: 42, bgcolor: COLOR.navy,
+  '&:hover': { bgcolor: COLOR.navyDark },
+  '&.Mui-disabled': { bgcolor: COLOR.neutralBg, color: COLOR.textMuted },
+};
+const iconBtnBordered = {
+  width: 40, height: 40, borderRadius: 1.5, border: `1px solid ${COLOR.border}`, color: COLOR.textSecondary,
+  '&:hover': { borderColor: COLOR.navy, color: COLOR.navy, bgcolor: COLOR.panel },
+};
+
+// Status chip config, kept in one place instead of duplicated per usage site
+function statusChipSx(isPositive) {
+  return {
+    borderRadius: '6px', fontWeight: 600, fontSize: '0.7rem', fontFamily: FONT_BODY,
+    bgcolor: isPositive ? COLOR.successBg : COLOR.neutralBg,
+    color: isPositive ? COLOR.success : COLOR.textSecondary,
+    '& .MuiChip-icon': { color: isPositive ? COLOR.success : COLOR.neutral, fontSize: 15 },
+  };
+}
+
 export default function AdminDashboard() {
-  const navigate = useNavigate(); // Hook initialized
-  const [data, setData] = useState({ 
-    systems: [], 
-    recentActivity: [], 
-    breakdown: [] 
+  const navigate = useNavigate();
+  const [data, setData] = useState({
+    systems: [],
+    recentActivity: [],
+    breakdown: []
   });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
-  
+
   // Filter States for Integration Logs
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [systemFilter, setSystemFilter] = useState('ALL');
-  
+  const filtersActive = statusFilter !== 'ALL' || systemFilter !== 'ALL';
+
   // Dialog selection managers
   const [selectedSystem, setSelectedSystem] = useState(null);
   const [viewingPayload, setViewingPayload] = useState(null);
@@ -93,20 +165,20 @@ export default function AdminDashboard() {
   const fetchMetrics = useCallback(() => {
     setLoading(true);
     setErrorMessage(null);
-    
+
     // 1. Fetch dashboard subsystem breakdown states
     const fetchStats = fetch(apiUrl('/api/city-summary')).then(res => {
       if (!res.ok) throw new Error('Failed to fetch city summary stats.');
       return res.json();
     });
-    
+
     // 2. Fetch integration logs with dynamic query parameters
     let logsUrl = '/api/integration/logs';
     const params = [];
     if (statusFilter !== 'ALL') params.push(`status=${statusFilter}`);
     if (systemFilter !== 'ALL') params.push(`systemName=${systemFilter}`);
     if (params.length > 0) logsUrl += `?${params.join('&')}`;
-    
+
     const fetchLogs = fetch(apiUrl(logsUrl)).then(res => {
       if (!res.ok) throw new Error('Failed to fetch integration logs.');
       return res.json();
@@ -133,8 +205,8 @@ export default function AdminDashboard() {
       });
   }, [statusFilter, systemFilter]);
 
-  useEffect(() => { 
-    fetchMetrics(); 
+  useEffect(() => {
+    fetchMetrics();
   }, [fetchMetrics]);
 
   const handleClearLogs = () => {
@@ -150,6 +222,11 @@ export default function AdminDashboard() {
         })
         .catch(err => console.error("Error clearing logs:", err));
     }
+  };
+
+  const resetFilters = () => {
+    setStatusFilter('ALL');
+    setSystemFilter('ALL');
   };
 
   const handleLogout = () => {
@@ -223,7 +300,8 @@ export default function AdminDashboard() {
     <Box sx={{ width: '100%', minHeight: '100vh', bgcolor: COLOR.bg, boxSizing: 'border-box', margin: 0, fontFamily: FONT_BODY }}>
       <Box sx={{ height: 4, width: '100%', bgcolor: COLOR.navy }} />
 
-      <Box sx={{ p: { xs: 2, md: 4 } }}>
+      {/* Constrained shell so the layout reads as a deliberate dashboard, not a fluid stretch */}
+      <Box sx={{ maxWidth: 1440, mx: 'auto', p: { xs: 2, md: 4 } }}>
         {errorMessage && (
           <Alert severity="error" sx={{ mb: 3, borderRadius: 1.5, fontFamily: FONT_BODY }} onClose={() => setErrorMessage(null)}>
             {errorMessage}
@@ -240,68 +318,52 @@ export default function AdminDashboard() {
               <Hub sx={{ fontSize: 26, color: '#fff' }} />
             </Avatar>
             <Box sx={{ textAlign: 'left' }}>
-              <Typography sx={{
-                fontFamily: FONT_MONO, color: COLOR.textMuted, fontSize: '0.68rem',
-                letterSpacing: '1.5px', textTransform: 'uppercase', mb: 0.25
-              }}>
+              <Typography sx={{ ...TYPE.eyebrow, color: COLOR.textMuted, mb: 0.25 }}>
                 Systems Integration {"&"} Architecture
               </Typography>
-              <Typography sx={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: { xs: '1.3rem', md: '1.55rem' }, color: COLOR.textPrimary, letterSpacing: '-0.2px' }}>
+              <Typography sx={{ ...TYPE.pageTitle, fontSize: { xs: '1.25rem', md: '1.45rem' }, color: COLOR.textPrimary }}>
                 Smart City Admin Dashboard
               </Typography>
             </Box>
           </Box>
 
+          {/* Action cluster: [status + refresh] — monitoring utilities, grouped since they act on the same data —
+              then System Management as the primary secondary action, then Logout set apart after a divider
+              since it ends the session rather than acting on the dashboard. */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             <Box sx={{
-              display: 'flex', alignItems: 'center', gap: 1, px: 1.75, py: 0.9,
+              display: 'flex', alignItems: 'center', gap: 1, pl: 1.75, pr: 0.75, height: 40,
               border: `1px solid ${COLOR.border}`, borderRadius: 1.5, bgcolor: COLOR.panel
             }}>
               <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: onlineCount === mappedSystems.length ? COLOR.success : COLOR.neutral }} />
-              <Typography sx={{ fontFamily: FONT_MONO, fontSize: '0.74rem', color: COLOR.textSecondary }}>
-                {onlineCount} of {mappedSystems.length} systems online
+              <Typography sx={{ ...TYPE.mono, color: COLOR.textSecondary, whiteSpace: 'nowrap' }}>
+                {onlineCount} of {mappedSystems.length} online
               </Typography>
+              <Tooltip title="Reload live metrics">
+                <IconButton onClick={fetchMetrics} size="small" sx={{ color: COLOR.textSecondary, '&:hover': { color: COLOR.navy } }}>
+                  <Refresh fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Box>
 
-            {/* System Management Route Navigation */}
-            <Button
-              startIcon={<Settings />}
-              onClick={() => navigate('/system-management')}
-              variant="contained"
-              disableElevation
-              sx={{
-                borderRadius: 1.5, px: 2.5, height: 40, fontWeight: 600, textTransform: 'none',
-                fontFamily: FONT_BODY, bgcolor: COLOR.navy,
-                '&:hover': { bgcolor: COLOR.navyDark }
-              }}
-            >
-              System Management
-            </Button>
+            <Tooltip title="Register and manage subsystem access">
+              <Button
+                startIcon={<Settings fontSize="small" />}
+                onClick={() => navigate('/system-management')}
+                variant="outlined"
+                sx={btnOutlinedNavy}
+              >
+                System Management
+              </Button>
+            </Tooltip>
 
-            {/* Refresh Button - Balanced to Outlined */}
-            <Button
-              startIcon={<Refresh />}
-              onClick={fetchMetrics}
-              variant="outlined"
-              sx={{
-                borderRadius: 1.5, px: 2.5, height: 40, fontWeight: 600, textTransform: 'none',
-                fontFamily: FONT_BODY, color: COLOR.textSecondary, borderColor: COLOR.border,
-                '&:hover': { borderColor: COLOR.navy, color: COLOR.navy }
-              }}
-            >
-              Refresh
-            </Button>
+            <Divider orientation="vertical" flexItem sx={{ borderColor: COLOR.border, my: 0.5 }} />
 
-            {/* Logout Button */}
             <Button
-              startIcon={<Logout />}
+              startIcon={<Logout fontSize="small" />}
               onClick={handleLogout}
               variant="outlined"
-              sx={{
-                borderRadius: 1.5, px: 2.5, height: 40, fontWeight: 600, textTransform: 'none',
-                fontFamily: FONT_BODY, color: COLOR.textSecondary, borderColor: COLOR.border,
-                '&:hover': { borderColor: COLOR.danger, color: COLOR.danger, bgcolor: COLOR.dangerBg }
-              }}
+              sx={btnOutlinedDanger}
             >
               Logout
             </Button>
@@ -309,24 +371,22 @@ export default function AdminDashboard() {
         </Box>
 
         {/* Subsystem nodes */}
-        <Typography sx={{
-          fontFamily: FONT_MONO, color: COLOR.textMuted, fontSize: '0.7rem',
-          letterSpacing: '1.5px', textTransform: 'uppercase', mb: 2, display: 'flex', alignItems: 'center', gap: 1
-        }}>
+        <Typography sx={{ ...TYPE.eyebrow, color: COLOR.textMuted, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Hub sx={{ fontSize: 14, color: COLOR.navy }} /> Cluster Subsystem Nodes
         </Typography>
 
-        <Grid container spacing={{ xs: 2, md: 2.5 }} sx={{ mb: 4 }}>
+        <Grid container spacing={{ xs: 2, md: 2.5 }} alignItems="stretch" sx={{ mb: 4 }}>
           {mappedSystems.map((sys) => (
-            <Grid item key={sys.id} xs={12} sm={6} md={3}>
+            <Grid item key={sys.id} xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
               <Card
                 onClick={() => setSelectedSystem(sys)}
                 sx={{
                   borderRadius: 2, bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}`,
                   borderLeft: `3px solid ${sys.isOnline ? COLOR.success : COLOR.neutral}`,
-                  transition: 'box-shadow 0.15s ease, transform 0.15s ease', height: '100%',
+                  transition: 'box-shadow 0.15s ease, transform 0.15s ease',
+                  width: '100%', display: 'flex', flexDirection: 'column',
                   cursor: 'pointer',
-                  '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 6px 16px rgba(27,58,92,0.08)' },
+                  '&:hover': { transform: 'translateY(-2px)', boxShadow: SHADOW.card },
                   '&:focus-visible': { outline: `2px solid ${COLOR.navy}`, outlineOffset: 2 }
                 }}
                 tabIndex={0}
@@ -345,39 +405,35 @@ export default function AdminDashboard() {
                     </Avatar>
                   }
                   title={
-                    <Typography sx={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: '0.92rem', color: COLOR.textPrimary, textAlign: 'left' }}>
+                    <Typography sx={{ ...TYPE.cardTitle, color: COLOR.textPrimary, textAlign: 'left' }}>
                       {sys.label}
                     </Typography>
                   }
                   subheader={
-                    <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.75rem', color: COLOR.textMuted, textAlign: 'left' }}>
+                    <Typography sx={{ ...TYPE.label, color: COLOR.textMuted, textAlign: 'left' }}>
                       Owner: {sys.leader}
                     </Typography>
                   }
                   sx={{ pb: 1 }}
                 />
                 <Divider sx={{ borderColor: COLOR.border }} />
-                <CardContent sx={{ pt: 1.75, pb: '16px !important' }}>
+                <CardContent sx={{ pt: 1.75, pb: 2, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', '&:last-child': { pb: 2 } }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                    <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.78rem', color: COLOR.textSecondary }}>
+                    <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary }}>
                       Link state
                     </Typography>
                     <Chip
-                      icon={sys.isOnline ? <CloudDone sx={{ fontSize: 14, color: `${COLOR.success} !important` }} /> : <CloudOff sx={{ fontSize: 14, color: `${COLOR.neutral} !important` }} />}
+                      icon={sys.isOnline ? <CloudDone /> : <CloudOff />}
                       label={sys.isOnline ? "Connected" : "Offline"}
                       size="small"
-                      sx={{
-                        borderRadius: '6px', fontWeight: 600, fontSize: '0.7rem', fontFamily: FONT_BODY,
-                        bgcolor: sys.isOnline ? COLOR.successBg : COLOR.neutralBg,
-                        color: sys.isOnline ? COLOR.success : COLOR.textSecondary,
-                      }}
+                      sx={statusChipSx(sys.isOnline)}
                     />
                   </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.78rem', color: COLOR.textSecondary }}>
+                    <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary }}>
                       Records synced
                     </Typography>
-                    <Typography sx={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: '1.2rem', color: sys.totalRecordsCount > 0 ? COLOR.navy : COLOR.textMuted }}>
+                    <Typography sx={{ ...TYPE.metric, color: sys.totalRecordsCount > 0 ? COLOR.navy : COLOR.textMuted }}>
                       {sys.totalRecordsCount}
                     </Typography>
                   </Box>
@@ -394,10 +450,10 @@ export default function AdminDashboard() {
           bgcolor: COLOR.panelTint, border: `1px solid ${COLOR.border}`
         }}>
           <Box sx={{ textAlign: 'left' }}>
-            <Typography sx={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: '1rem', color: COLOR.textPrimary }}>
+            <Typography sx={{ ...TYPE.sectionTitle, color: COLOR.textPrimary }}>
               Compile city-wide integration summary
             </Typography>
-            <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.82rem', color: COLOR.textSecondary, mt: 0.5 }}>
+            <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary, mt: 0.5 }}>
               Bundles connection status, node metrics, and transaction checks into a printable PDF report.
             </Typography>
           </Box>
@@ -407,75 +463,78 @@ export default function AdminDashboard() {
             disabled={generating}
             variant="contained"
             disableElevation
-            sx={{
-              fontWeight: 600, textTransform: 'none', borderRadius: 1.5, px: 3, height: 42,
-              fontFamily: FONT_BODY, bgcolor: COLOR.navy, whiteSpace: 'nowrap',
-              '&:hover': { bgcolor: COLOR.navyDark },
-              '&.Mui-disabled': { bgcolor: COLOR.neutralBg, color: COLOR.textMuted }
-            }}
+            sx={{ ...btnPrimary, whiteSpace: 'nowrap' }}
           >
             {generating ? 'Compiling summary…' : 'Download PDF summary'}
           </Button>
         </Paper>
 
-        {/* Integration Logs Filter Panel */}
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 1.5 }}>
-          <Typography sx={{
-            fontFamily: FONT_MONO, color: COLOR.textMuted, fontSize: '0.7rem',
-            letterSpacing: '1.5px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 1
-          }}>
-            <ListAlt sx={{ fontSize: 14, color: COLOR.navy }} /> Central Log Gateway
-          </Typography>
+        {/* Integration Logs Toolbar */}
+        <Typography sx={{ ...TYPE.eyebrow, color: COLOR.textMuted, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ListAlt sx={{ fontSize: 14, color: COLOR.navy }} /> Central Log Gateway
+        </Typography>
 
+        <Paper sx={{
+          p: 2.5, mb: 3, borderRadius: 2, bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}`,
+          display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2
+        }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-            {/* System Filter Dropdown */}
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel sx={{ fontFamily: FONT_BODY, fontSize: '0.8rem' }}>Origin Subsystem</InputLabel>
+            <FormControl size="small" sx={{ minWidth: 170 }}>
+              <InputLabel sx={selectLabelSx}>Origin Subsystem</InputLabel>
               <Select
                 value={systemFilter}
                 onChange={(e) => setSystemFilter(e.target.value)}
                 label="Origin Subsystem"
-                sx={{ borderRadius: 1.5, fontFamily: FONT_BODY, fontSize: '0.8rem', bgcolor: COLOR.panel }}
+                sx={selectSx}
+                MenuProps={menuPaperProps}
               >
-                <MenuItem value="ALL">All Subsystems</MenuItem>
+                <MenuItem value="ALL" sx={menuItemSx}>All Subsystems</MenuItem>
                 {CHOSEN_SUBSYSTEMS.map(sys => (
-                  <MenuItem key={sys.id} value={sys.id}>{sys.label}</MenuItem>
+                  <MenuItem key={sys.id} value={sys.id} sx={menuItemSx}>{sys.label}</MenuItem>
                 ))}
               </Select>
             </FormControl>
 
-            {/* Status Filter Dropdown */}
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-              <InputLabel sx={{ fontFamily: FONT_BODY, fontSize: '0.8rem' }}>Gateway Status</InputLabel>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel sx={selectLabelSx}>Gateway Status</InputLabel>
               <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 label="Gateway Status"
-                sx={{ borderRadius: 1.5, fontFamily: FONT_BODY, fontSize: '0.8rem', bgcolor: COLOR.panel }}
+                sx={selectSx}
+                MenuProps={menuPaperProps}
               >
-                <MenuItem value="ALL">All States</MenuItem>
-                <MenuItem value="SUCCESS">Success</MenuItem>
-                <MenuItem value="FAILURE">Failure</MenuItem>
+                <MenuItem value="ALL" sx={menuItemSx}>All States</MenuItem>
+                <MenuItem value="SUCCESS" sx={menuItemSx}>Success</MenuItem>
+                <MenuItem value="FAILURE" sx={menuItemSx}>Failure</MenuItem>
               </Select>
             </FormControl>
 
-            {/* Clear Logs Button */}
-            <Button
-              startIcon={<DeleteSweep />}
-              onClick={handleClearLogs}
-              variant="outlined"
-              color="error"
-              size="small"
-              sx={{
-                borderRadius: 1.5, height: 38, textTransform: 'none', fontWeight: 600,
-                fontFamily: FONT_BODY, borderColor: COLOR.border, color: COLOR.textSecondary,
-                '&:hover': { borderColor: COLOR.danger, color: COLOR.danger, bgcolor: COLOR.dangerBg }
-              }}
-            >
-              Clear Log History
-            </Button>
+            {filtersActive && (
+              <Button
+                startIcon={<FilterAltOff fontSize="small" />}
+                onClick={resetFilters}
+                size="small"
+                sx={{
+                  height: 38, textTransform: 'none', fontWeight: 600, fontFamily: FONT_BODY,
+                  color: COLOR.navy, '&:hover': { bgcolor: COLOR.panelTint }
+                }}
+              >
+                Reset filters
+              </Button>
+            )}
           </Box>
-        </Box>
+
+          <Button
+            startIcon={<DeleteSweep fontSize="small" />}
+            onClick={handleClearLogs}
+            variant="outlined"
+            size="small"
+            sx={{ ...btnOutlinedDanger, height: 38 }}
+          >
+            Clear Log History
+          </Button>
+        </Paper>
 
         {/* Logs Table */}
         <TableContainer component={Paper} sx={{ borderRadius: 2, overflow: 'hidden', bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}` }}>
@@ -492,10 +551,22 @@ export default function AdminDashboard() {
             <TableBody>
               {data.recentActivity.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} align="center" sx={{ py: 8, borderColor: COLOR.border }}>
-                    <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.85rem', color: COLOR.textMuted, fontStyle: 'italic' }}>
-                      No stream activity matches selected filters. Waiting for member node handshakes...
+                  <TableCell colSpan={4} align="center" sx={{ py: 7, borderColor: COLOR.border }}>
+                    <ListAlt sx={{ fontSize: 28, color: COLOR.border, mb: 1 }} />
+                    <Typography sx={{ ...TYPE.body, color: COLOR.textMuted }}>
+                      {filtersActive
+                        ? 'No log entries match the selected filters.'
+                        : 'No stream activity yet. Waiting for member node handshakes…'}
                     </Typography>
+                    {filtersActive && (
+                      <Button
+                        onClick={resetFilters}
+                        size="small"
+                        sx={{ mt: 1, textTransform: 'none', fontWeight: 600, fontFamily: FONT_BODY, color: COLOR.navy }}
+                      >
+                        Reset filters
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -506,30 +577,31 @@ export default function AdminDashboard() {
                     const date = new Date(timestampValue);
                     formattedTime = isNaN(date.getTime()) ? 'N/A' : date.toLocaleTimeString();
                   }
+                  const isSuccess = log.status === 'SUCCESS';
 
                   return (
                     <TableRow key={log._id || index} hover sx={{ '&:hover': { bgcolor: COLOR.panelTint } }}>
-                      <TableCell sx={{ fontFamily: FONT_MONO, fontSize: '0.78rem', color: COLOR.textSecondary, borderColor: COLOR.border }}>
+                      <TableCell sx={{ ...TYPE.mono, color: COLOR.textSecondary, borderColor: COLOR.border, py: 1.5 }}>
                         {formattedTime}
                       </TableCell>
-                      <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: '0.85rem', color: COLOR.textPrimary, textAlign: 'left', borderColor: COLOR.border }}>
+                      <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: '0.85rem', color: COLOR.textPrimary, textAlign: 'left', borderColor: COLOR.border, py: 1.5 }}>
                         {CHOSEN_SUBSYSTEMS.find(sys => sys.id === log.systemName)?.label || log.systemName?.replace(/([A-Z])/g, ' $1').trim()}
                       </TableCell>
-                      <TableCell sx={{ borderColor: COLOR.border }}>
+                      <TableCell sx={{ borderColor: COLOR.border, py: 1.5 }}>
                         <Chip
                           label={log.status}
                           size="small"
                           sx={{
                             fontWeight: 600, fontFamily: FONT_BODY, borderRadius: '6px', fontSize: '0.7rem',
-                            color: log.status === 'SUCCESS' ? COLOR.success : COLOR.danger,
-                            bgcolor: log.status === 'SUCCESS' ? COLOR.successBg : COLOR.dangerBg,
+                            color: isSuccess ? COLOR.success : COLOR.danger,
+                            bgcolor: isSuccess ? COLOR.successBg : COLOR.dangerBg,
                           }}
                         />
                       </TableCell>
-                      <TableCell sx={{ borderColor: COLOR.border }}>
-                        <Box 
+                      <TableCell sx={{ borderColor: COLOR.border, py: 1.5 }}>
+                        <Box
                           onClick={() => setViewingPayload(log)}
-                          component="code" 
+                          component="code"
                           sx={{
                             fontFamily: FONT_MONO, fontSize: '0.75rem', bgcolor: COLOR.panelTint, p: '4px 10px',
                             borderRadius: 1.5, color: COLOR.textSecondary, display: 'inline-block',
@@ -550,7 +622,7 @@ export default function AdminDashboard() {
         </TableContainer>
       </Box>
 
-      {/* Subsystem detail dialog */}
+      {/* Subsystem detail dialog — single close affordance (top-right X) instead of a duplicate footer button */}
       <Dialog
         open={Boolean(selectedSystem)}
         onClose={() => setSelectedSystem(null)}
@@ -569,10 +641,10 @@ export default function AdminDashboard() {
                 {selectedSystem.icon}
               </Avatar>
               <Box sx={{ textAlign: 'left' }}>
-                <Typography sx={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: '1.05rem', color: COLOR.textPrimary }}>
+                <Typography sx={TYPE.dialogTitle}>
                   {selectedSystem.label}
                 </Typography>
-                <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.75rem', color: COLOR.textMuted }}>
+                <Typography sx={{ ...TYPE.label, color: COLOR.textMuted }}>
                   Owner: {selectedSystem.leader}
                 </Typography>
               </Box>
@@ -586,67 +658,47 @@ export default function AdminDashboard() {
 
             <Divider sx={{ borderColor: COLOR.border }} />
 
-            <DialogContent sx={{ pt: 2.5 }}>
-              <Typography sx={{
-                fontFamily: FONT_MONO, color: COLOR.textMuted, fontSize: '0.68rem',
-                letterSpacing: '1.5px', textTransform: 'uppercase', mb: 0.75
-              }}>
+            <DialogContent sx={{ pt: 2.5, pb: 3 }}>
+              <Typography sx={{ ...TYPE.eyebrow, color: COLOR.textMuted, mb: 0.75 }}>
                 What it does
               </Typography>
-              <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.88rem', color: COLOR.textSecondary, lineHeight: 1.6, mb: 3 }}>
+              <Typography sx={{ ...TYPE.body, color: COLOR.textSecondary, lineHeight: 1.6, mb: 3 }}>
                 {selectedSystem.description}
               </Typography>
 
               <Stack direction="row" spacing={1.5}>
                 <Box sx={{ flex: 1, p: 1.5, borderRadius: 1.5, bgcolor: COLOR.panelTint, border: `1px solid ${COLOR.border}` }}>
-                  <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.72rem', color: COLOR.textSecondary, mb: 0.5 }}>
+                  <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary, mb: 0.5 }}>
                     Link state
                   </Typography>
                   <Chip
-                    icon={selectedSystem.isOnline ? <CloudDone sx={{ fontSize: 14, color: `${COLOR.success} !important` }} /> : <CloudOff sx={{ fontSize: 14, color: `${COLOR.neutral} !important` }} />}
+                    icon={selectedSystem.isOnline ? <CloudDone /> : <CloudOff />}
                     label={selectedSystem.isOnline ? "Connected" : "Offline"}
                     size="small"
-                    sx={{
-                      borderRadius: '6px', fontWeight: 600, fontSize: '0.7rem', fontFamily: FONT_BODY,
-                      bgcolor: selectedSystem.isOnline ? COLOR.successBg : COLOR.neutralBg,
-                      color: selectedSystem.isOnline ? COLOR.success : COLOR.textSecondary,
-                    }}
+                    sx={statusChipSx(selectedSystem.isOnline)}
                   />
                 </Box>
                 <Box sx={{ flex: 1, p: 1.5, borderRadius: 1.5, bgcolor: COLOR.panelTint, border: `1px solid ${COLOR.border}` }}>
-                  <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.72rem', color: COLOR.textSecondary, mb: 0.5 }}>
+                  <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary, mb: 0.5 }}>
                     Records synced
                   </Typography>
-                  <Typography sx={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: '1.1rem', color: selectedSystem.totalRecordsCount > 0 ? COLOR.navy : COLOR.textMuted }}>
+                  <Typography sx={{ ...TYPE.metric, fontSize: '1.1rem', color: selectedSystem.totalRecordsCount > 0 ? COLOR.navy : COLOR.textMuted }}>
                     {selectedSystem.totalRecordsCount}
                   </Typography>
                 </Box>
               </Stack>
 
               {selectedSystem.lastHeartbeat && (
-                <Typography sx={{ fontFamily: FONT_MONO, fontSize: '0.72rem', color: COLOR.textMuted, mt: 2 }}>
+                <Typography sx={{ ...TYPE.mono, color: COLOR.textMuted, mt: 2 }}>
                   Last heartbeat: {new Date(selectedSystem.lastHeartbeat).toLocaleString()}
                 </Typography>
               )}
             </DialogContent>
-
-            <DialogActions sx={{ px: 3, pb: 2.5 }}>
-              <Button
-                onClick={() => setSelectedSystem(null)}
-                variant="outlined"
-                sx={{
-                  textTransform: 'none', fontWeight: 600, borderRadius: 1.5,
-                  fontFamily: FONT_BODY, color: COLOR.textSecondary, borderColor: COLOR.border
-                }}
-              >
-                Close
-              </Button>
-            </DialogActions>
           </>
         )}
       </Dialog>
 
-      {/* Dynamic JSON Payload Inspector Dialog */}
+      {/* Dynamic JSON Payload Inspector Dialog — same single close affordance */}
       <Dialog
         open={Boolean(viewingPayload)}
         onClose={() => setViewingPayload(null)}
@@ -658,10 +710,10 @@ export default function AdminDashboard() {
           <>
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box>
-                <Typography sx={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: '1.05rem', color: COLOR.textPrimary }}>
+                <Typography sx={TYPE.dialogTitle}>
                   Payload Diagnostic View
                 </Typography>
-                <Typography sx={{ fontFamily: FONT_BODY, fontSize: '0.75rem', color: COLOR.textMuted }}>
+                <Typography sx={{ ...TYPE.label, color: COLOR.textMuted }}>
                   Integration Log ID: {viewingPayload._id}
                 </Typography>
               </Box>
@@ -672,47 +724,32 @@ export default function AdminDashboard() {
 
             <Divider sx={{ borderColor: COLOR.border }} />
 
-            <DialogContent sx={{ bgcolor: COLOR.bg, p: 2 }}>
+            <DialogContent sx={{ bgcolor: COLOR.bg, p: 2, pb: 3 }}>
               {viewingPayload.status === 'FAILURE' && viewingPayload.errorMessage && (
                 <Box sx={{ p: 1.5, mb: 2, borderRadius: 1.5, bgcolor: COLOR.dangerBg, border: `1px solid ${COLOR.danger}` }}>
                   <Typography sx={{ fontFamily: FONT_BODY, fontWeight: 700, fontSize: '0.75rem', color: COLOR.danger, mb: 0.5 }}>
                     Runtime Crash Context:
                   </Typography>
-                  <Typography sx={{ fontFamily: FONT_MONO, fontSize: '0.75rem', color: COLOR.danger }}>
+                  <Typography sx={{ ...TYPE.mono, color: COLOR.danger }}>
                     {viewingPayload.errorMessage}
                   </Typography>
                 </Box>
               )}
-              
+
               <Box sx={{ p: 2, borderRadius: 1.5, bgcolor: '#1E1E1E', border: '1px solid #333', overflowX: 'auto' }}>
-                <Typography component="pre" sx={{ 
-                  fontFamily: FONT_MONO, 
-                  fontSize: '0.75rem', 
-                  color: '#A9B7C6', 
-                  margin: 0, 
+                <Typography component="pre" sx={{
+                  fontFamily: FONT_MONO,
+                  fontSize: '0.75rem',
+                  color: '#A9B7C6',
+                  margin: 0,
                   textAlign: 'left',
-                  whiteSpace: 'pre-wrap', 
-                  wordBreak: 'break-all' 
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all'
                 }}>
                   {JSON.stringify(viewingPayload.payloadReceived || {}, null, 2)}
                 </Typography>
               </Box>
             </DialogContent>
-
-            <Divider sx={{ borderColor: COLOR.border }} />
-
-            <DialogActions sx={{ px: 3, pb: 2.5 }}>
-              <Button
-                onClick={() => setViewingPayload(null)}
-                variant="outlined"
-                sx={{
-                  textTransform: 'none', fontWeight: 600, borderRadius: 1.5,
-                  fontFamily: FONT_BODY, color: COLOR.textSecondary, borderColor: COLOR.border
-                }}
-              >
-                Dismiss
-              </Button>
-            </DialogActions>
           </>
         )}
       </Dialog>
