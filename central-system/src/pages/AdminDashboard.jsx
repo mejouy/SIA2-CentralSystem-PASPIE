@@ -3,17 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import generateIntegrationPDF from '../utils/reportGenerator';
 import { apiUrl } from '../utils/api';
 import {
-  Typography, Grid, Card, CardContent,
-  Box, Chip, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, CircularProgress, Button,
-  Divider, CardHeader, Avatar, Dialog, DialogTitle, DialogContent,
-  IconButton, Stack, Select, MenuItem, FormControl, InputLabel, Alert, Tooltip
+  Typography, Grid, Card, CardContent, Box, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Button, Divider, CardHeader, Avatar, Dialog, DialogTitle, DialogContent, IconButton, Stack, Select, MenuItem, FormControl, InputLabel, Alert, Tooltip
 } from '@mui/material';
 
 import {
-  Hub, CloudDone, CloudOff, Refresh, Logout, Close,
-  Campaign, FindInPage, ReportProblem, EventSeat, ListAlt, Assessment, DeleteSweep,
-  Settings, FilterAltOff
+  Hub, CloudDone, CloudOff, Refresh, Logout, Close, Campaign, FindInPage, ReportProblem, EventSeat, ListAlt, Assessment, DeleteSweep, Settings, FilterAltOff
 } from '@mui/icons-material';
 
 const CHOSEN_SUBSYSTEMS = [
@@ -210,7 +204,7 @@ export default function AdminDashboard() {
   }, [fetchMetrics]);
 
   const handleClearLogs = () => {
-    if (window.confirm("Are you sure you want to purge all Integration Logs from the gateway? This cannot be undone.")) {
+    if (window.confirm("Are you sure you want to delete all Integration Logs from the gateway? This cannot be undone.")) {
       fetch(apiUrl('/api/integration/logs/clear'), { method: 'DELETE' })
         .then(res => res.json())
         .then(resData => {
@@ -320,18 +314,15 @@ export default function AdminDashboard() {
             </Avatar>
             <Box sx={{ textAlign: 'left', minWidth: 0 }}>
               <Typography sx={{ ...TYPE.eyebrow, color: COLOR.textMuted, mb: 0.25, fontSize: { xs: '0.62rem', md: '0.7rem' } }}>
-                Systems Integration {"&"} Architecture
+                Smart City: Integrated Urban Services
               </Typography>
               <Typography sx={{ ...TYPE.pageTitle, fontSize: { xs: '1.15rem', md: '1.45rem' }, color: COLOR.textPrimary }}>
-                Smart City Admin Dashboard
+                Admin Dashboard
               </Typography>
             </Box>
           </Box>
 
-          {/* Action cluster: [status + refresh] — monitoring utilities, grouped since they act on the same data —
-              then System Management as the primary secondary action, then Logout set apart after a divider
-              since it ends the session rather than acting on the dashboard. On mobile the divider drops out
-              and everything wraps into a simple two-per-row grid of full-width-friendly buttons. */}
+          {/* Action cluster: [status + refresh]*/}
           <Box sx={{
             display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap',
             justifyContent: { xs: 'space-between', md: 'flex-end' }
@@ -381,7 +372,7 @@ export default function AdminDashboard() {
           <Hub sx={{ fontSize: 14, color: COLOR.navy }} /> Cluster Subsystem Nodes
         </Typography>
 
-        <Grid container spacing={{ xs: 2, md: 2.5 }} alignItems="stretch" sx={{ mb: 4 }}>
+        <Grid container spacing={{ xs: 2, md: 2.5 }} alignItems="flex" sx={{ mb: 4 }}>
           {mappedSystems.map((sys) => (
             <Grid item key={sys.id} xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
               <Card
