@@ -308,20 +308,21 @@ export default function AdminDashboard() {
           </Alert>
         )}
 
-        {/* Header */}
+        {/* Header — stacks to a column on mobile instead of squeezing everything into one wrapping row */}
         <Box sx={{
-          display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center',
+          display: 'flex', flexDirection: { xs: 'column', md: 'row' },
+          justifyContent: 'space-between', alignItems: { xs: 'stretch', md: 'center' },
           gap: 2, mb: 4, pb: 3, borderBottom: `1px solid ${COLOR.border}`
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar variant="rounded" sx={{ bgcolor: COLOR.navy, width: 48, height: 48, borderRadius: 1.5 }}>
-              <Hub sx={{ fontSize: 26, color: '#fff' }} />
+            <Avatar variant="rounded" sx={{ bgcolor: COLOR.navy, width: { xs: 40, md: 48 }, height: { xs: 40, md: 48 }, borderRadius: 1.5, flexShrink: 0 }}>
+              <Hub sx={{ fontSize: { xs: 22, md: 26 }, color: '#fff' }} />
             </Avatar>
-            <Box sx={{ textAlign: 'left' }}>
-              <Typography sx={{ ...TYPE.eyebrow, color: COLOR.textMuted, mb: 0.25 }}>
+            <Box sx={{ textAlign: 'left', minWidth: 0 }}>
+              <Typography sx={{ ...TYPE.eyebrow, color: COLOR.textMuted, mb: 0.25, fontSize: { xs: '0.62rem', md: '0.7rem' } }}>
                 Systems Integration {"&"} Architecture
               </Typography>
-              <Typography sx={{ ...TYPE.pageTitle, fontSize: { xs: '1.25rem', md: '1.45rem' }, color: COLOR.textPrimary }}>
+              <Typography sx={{ ...TYPE.pageTitle, fontSize: { xs: '1.15rem', md: '1.45rem' }, color: COLOR.textPrimary }}>
                 Smart City Admin Dashboard
               </Typography>
             </Box>
@@ -329,14 +330,19 @@ export default function AdminDashboard() {
 
           {/* Action cluster: [status + refresh] — monitoring utilities, grouped since they act on the same data —
               then System Management as the primary secondary action, then Logout set apart after a divider
-              since it ends the session rather than acting on the dashboard. */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+              since it ends the session rather than acting on the dashboard. On mobile the divider drops out
+              and everything wraps into a simple two-per-row grid of full-width-friendly buttons. */}
+          <Box sx={{
+            display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap',
+            justifyContent: { xs: 'space-between', md: 'flex-end' }
+          }}>
             <Box sx={{
               display: 'flex', alignItems: 'center', gap: 1, pl: 1.75, pr: 0.75, height: 40,
-              border: `1px solid ${COLOR.border}`, borderRadius: 1.5, bgcolor: COLOR.panel
+              border: `1px solid ${COLOR.border}`, borderRadius: 1.5, bgcolor: COLOR.panel,
+              flex: { xs: '1 1 100%', sm: '0 1 auto' }, order: { xs: 1, md: 0 }
             }}>
-              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: onlineCount === mappedSystems.length ? COLOR.success : COLOR.neutral }} />
-              <Typography sx={{ ...TYPE.mono, color: COLOR.textSecondary, whiteSpace: 'nowrap' }}>
+              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: onlineCount === mappedSystems.length ? COLOR.success : COLOR.neutral, flexShrink: 0 }} />
+              <Typography sx={{ ...TYPE.mono, color: COLOR.textSecondary, whiteSpace: 'nowrap', flex: 1 }}>
                 {onlineCount} of {mappedSystems.length} online
               </Typography>
               <Tooltip title="Reload live metrics">
@@ -351,19 +357,19 @@ export default function AdminDashboard() {
                 startIcon={<Settings fontSize="small" />}
                 onClick={() => navigate('/system-management')}
                 variant="outlined"
-                sx={btnOutlinedNavy}
+                sx={{ ...btnOutlinedNavy, flex: { xs: '1 1 auto', md: '0 0 auto' } }}
               >
                 System Management
               </Button>
             </Tooltip>
 
-            <Divider orientation="vertical" flexItem sx={{ borderColor: COLOR.border, my: 0.5 }} />
+            <Divider orientation="vertical" flexItem sx={{ borderColor: COLOR.border, my: 0.5, display: { xs: 'none', md: 'block' } }} />
 
             <Button
               startIcon={<Logout fontSize="small" />}
               onClick={handleLogout}
               variant="outlined"
-              sx={btnOutlinedDanger}
+              sx={{ ...btnOutlinedDanger, flex: { xs: '1 1 auto', md: '0 0 auto' } }}
             >
               Logout
             </Button>
@@ -478,8 +484,8 @@ export default function AdminDashboard() {
           p: 2.5, mb: 3, borderRadius: 2, bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}`,
           display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2
         }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-            <FormControl size="small" sx={{ minWidth: 170 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', width: { xs: '100%', md: 'auto' } }}>
+            <FormControl size="small" sx={{ flex: { xs: '1 1 140px', sm: '0 1 auto' }, minWidth: 140 }}>
               <InputLabel sx={selectLabelSx}>Origin Subsystem</InputLabel>
               <Select
                 value={systemFilter}
@@ -495,7 +501,7 @@ export default function AdminDashboard() {
               </Select>
             </FormControl>
 
-            <FormControl size="small" sx={{ minWidth: 150 }}>
+            <FormControl size="small" sx={{ flex: { xs: '1 1 130px', sm: '0 1 auto' }, minWidth: 130 }}>
               <InputLabel sx={selectLabelSx}>Gateway Status</InputLabel>
               <Select
                 value={statusFilter}
@@ -530,15 +536,15 @@ export default function AdminDashboard() {
             onClick={handleClearLogs}
             variant="outlined"
             size="small"
-            sx={{ ...btnOutlinedDanger, height: 38 }}
+            sx={{ ...btnOutlinedDanger, height: 38, width: { xs: '100%', md: 'auto' } }}
           >
             Clear Log History
           </Button>
         </Paper>
 
         {/* Logs Table */}
-        <TableContainer component={Paper} sx={{ borderRadius: 2, overflow: 'hidden', bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}` }}>
-          <Table>
+        <TableContainer component={Paper} sx={{ borderRadius: 2, overflowX: 'auto', overflowY: 'hidden', bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}` }}>
+          <Table sx={{ minWidth: 640 }}>
             <TableHead sx={{ backgroundColor: COLOR.panelTint }}>
               <TableRow>
                 {['Timestamp', 'Origin Subsystem', 'Gateway Status', 'Payload Signature'].map(h => (
@@ -605,7 +611,7 @@ export default function AdminDashboard() {
                           sx={{
                             fontFamily: FONT_MONO, fontSize: '0.75rem', bgcolor: COLOR.panelTint, p: '4px 10px',
                             borderRadius: 1.5, color: COLOR.textSecondary, display: 'inline-block',
-                            maxWidth: '450px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            maxWidth: { xs: '220px', sm: '450px' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                             border: `1px solid ${COLOR.border}`, cursor: 'pointer',
                             '&:hover': { borderColor: COLOR.navy, bgcolor: COLOR.panel, color: COLOR.navy }
                           }}
@@ -666,7 +672,7 @@ export default function AdminDashboard() {
                 {selectedSystem.description}
               </Typography>
 
-              <Stack direction="row" spacing={1.5}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                 <Box sx={{ flex: 1, p: 1.5, borderRadius: 1.5, bgcolor: COLOR.panelTint, border: `1px solid ${COLOR.border}` }}>
                   <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary, mb: 0.5 }}>
                     Link state
