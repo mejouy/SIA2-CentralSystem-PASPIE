@@ -3,18 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import generateIntegrationPDF from '../utils/reportGenerator';
 import { apiUrl } from '../utils/api';
 import {
-  Typography, Card, CardContent,
+  Typography, Grid, Card, CardContent,
   Box, Chip, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, CircularProgress, Button,
   Divider, CardHeader, Avatar, Dialog, DialogTitle, DialogContent,
-  IconButton, Stack, Select, MenuItem, FormControl, InputLabel, Alert, Tooltip,
-  useMediaQuery, useTheme
+  IconButton, Stack, Select, MenuItem, FormControl, InputLabel, Alert, Tooltip
 } from '@mui/material';
 
 import {
   Hub, CloudDone, CloudOff, Refresh, Logout, Close,
   Campaign, FindInPage, ReportProblem, EventSeat, ListAlt, Assessment, DeleteSweep,
-  Settings, FilterAltOff, TrendingUp, CheckCircle, ErrorOutline, Storage
+  Settings, FilterAltOff
 } from '@mui/icons-material';
 
 const CHOSEN_SUBSYSTEMS = [
@@ -142,36 +141,8 @@ function statusChipSx(isPositive) {
   };
 }
 
-// KPI tile used in the summary strip at the top of the dashboard
-function StatTile({ icon, label, value, accent }) {
-  return (
-    <Paper sx={{
-      p: { xs: 1.75, md: 2.25 }, borderRadius: 2, bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}`,
-      display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0
-    }}>
-      <Avatar variant="rounded" sx={{
-        bgcolor: accent.bg, color: accent.fg, width: { xs: 36, md: 42 }, height: { xs: 36, md: 42 },
-        borderRadius: 1.25, flexShrink: 0
-      }}>
-        {icon}
-      </Avatar>
-      <Box sx={{ minWidth: 0, textAlign: 'left' }}>
-        <Typography sx={{ ...TYPE.label, color: COLOR.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {label}
-        </Typography>
-        <Typography sx={{ ...TYPE.metric, fontSize: { xs: '1.05rem', md: '1.25rem' }, color: COLOR.textPrimary }}>
-          {value}
-        </Typography>
-      </Box>
-    </Paper>
-  );
-}
-
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-
   const [data, setData] = useState({
     systems: [],
     recentActivity: [],
@@ -317,20 +288,6 @@ export default function AdminDashboard() {
 
   const onlineCount = mappedSystems.filter(s => s.isOnline).length;
 
-  // Dashboard-level KPIs, derived from the currently loaded (and possibly filtered) log set
-  const totalRecordsSynced = mappedSystems.reduce((sum, s) => sum + s.totalRecordsCount, 0);
-  const totalLogs = data.recentActivity.length;
-  const successLogs = data.recentActivity.filter(l => l.status === 'SUCCESS').length;
-  const failedLogs = totalLogs - successLogs;
-  const successRate = totalLogs > 0 ? Math.round((successLogs / totalLogs) * 100) : null;
-
-  const formatLogTimestamp = (log) => {
-    const timestampValue = log.timestamp || log.createdAt;
-    if (!timestampValue) return 'N/A';
-    const date = new Date(timestampValue);
-    return isNaN(date.getTime()) ? 'N/A' : date.toLocaleString();
-  };
-
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: COLOR.bg }}>
@@ -341,16 +298,7 @@ export default function AdminDashboard() {
 
   return (
     <Box sx={{ width: '100%', minHeight: '100vh', bgcolor: COLOR.bg, boxSizing: 'border-box', margin: 0, fontFamily: FONT_BODY }}>
-      {/* Sticky branded top bar — anchors the page as an admin shell rather than a plain content block */}
-      <Box sx={{
-        position: 'sticky', top: 0, zIndex: 10, bgcolor: COLOR.navy, height: { xs: 52, md: 56 },
-        display: 'flex', alignItems: 'center', px: { xs: 2, md: 4 }, boxShadow: '0 2px 10px rgba(19,42,68,0.25)'
-      }}>
-        <Hub sx={{ fontSize: 20, color: '#fff', mr: 1.25, flexShrink: 0 }} />
-        <Typography sx={{ ...TYPE.eyebrow, color: '#fff', letterSpacing: '1.75px', fontSize: { xs: '0.62rem', md: '0.7rem' } }}>
-          Smart City Systems Integration
-        </Typography>
-      </Box>
+      <Box sx={{ height: 4, width: '100%', bgcolor: COLOR.navy }} />
 
       {/* Constrained shell so the layout reads as a deliberate dashboard, not a fluid stretch */}
       <Box sx={{ maxWidth: 1440, mx: 'auto', p: { xs: 2, md: 4 } }}>
@@ -428,121 +376,82 @@ export default function AdminDashboard() {
           </Box>
         </Box>
 
-        {/* KPI summary strip — the at-a-glance numbers a proper admin dashboard leads with */}
-        <Box sx={{
-          display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
-          gap: { xs: 1.5, md: 2 }, mb: 4
-        }}>
-          <StatTile
-            icon={<Storage fontSize="small" />}
-            label="Records synced"
-            value={totalRecordsSynced.toLocaleString()}
-            accent={{ bg: COLOR.panelTint, fg: COLOR.navy }}
-          />
-          <StatTile
-            icon={<TrendingUp fontSize="small" />}
-            label={filtersActive ? 'Success rate (filtered)' : 'Success rate'}
-            value={successRate === null ? '—' : `${successRate}%`}
-            accent={{ bg: COLOR.successBg, fg: COLOR.success }}
-          />
-          <StatTile
-            icon={<ErrorOutline fontSize="small" />}
-            label={filtersActive ? 'Failures (filtered)' : 'Failures'}
-            value={failedLogs}
-            accent={{ bg: COLOR.dangerBg, fg: COLOR.danger }}
-          />
-          <StatTile
-            icon={<CheckCircle fontSize="small" />}
-            label="Subsystems online"
-            value={`${onlineCount} / ${mappedSystems.length}`}
-            accent={{ bg: COLOR.panelTint, fg: COLOR.navy }}
-          />
-        </Box>
-
         {/* Subsystem nodes */}
         <Typography sx={{ ...TYPE.eyebrow, color: COLOR.textMuted, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Hub sx={{ fontSize: 14, color: COLOR.navy }} /> Cluster Subsystem Nodes
         </Typography>
 
-        {/* CSS grid instead of MUI Grid: gridAutoRows: '1fr' guarantees every card in the row shares
-            the same height regardless of description length, and the column count is explicit per
-            breakpoint so cards stretch to fill the row rather than shrinking to their content. */}
-        <Box sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
-          gridAutoRows: '1fr',
-          gap: { xs: 2, md: 2.5 },
-          mb: 4
-        }}>
+        <Grid container spacing={{ xs: 2, md: 2.5 }} alignItems="stretch" sx={{ mb: 4 }}>
           {mappedSystems.map((sys) => (
-            <Card
-              key={sys.id}
-              onClick={() => setSelectedSystem(sys)}
-              sx={{
-                borderRadius: 2, bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}`,
-                borderLeft: `3px solid ${sys.isOnline ? COLOR.success : COLOR.neutral}`,
-                transition: 'box-shadow 0.15s ease, transform 0.15s ease',
-                width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
-                cursor: 'pointer',
-                '&:hover': { transform: 'translateY(-2px)', boxShadow: SHADOW.card },
-                '&:focus-visible': { outline: `2px solid ${COLOR.navy}`, outlineOffset: 2 }
-              }}
-              tabIndex={0}
-              role="button"
-              aria-label={`View details for ${sys.label}`}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedSystem(sys); } }}
-            >
-              <CardHeader
-                avatar={
-                  <Avatar variant="rounded" sx={{
-                    bgcolor: sys.isOnline ? COLOR.successBg : COLOR.neutralBg,
-                    color: sys.isOnline ? COLOR.success : COLOR.neutral,
-                    width: 40, height: 40, borderRadius: 1.25
-                  }}>
-                    {sys.icon}
-                  </Avatar>
-                }
-                title={
-                  <Typography sx={{ ...TYPE.cardTitle, color: COLOR.textPrimary, textAlign: 'left' }}>
-                    {sys.label}
-                  </Typography>
-                }
-                subheader={
-                  <Typography sx={{ ...TYPE.label, color: COLOR.textMuted, textAlign: 'left' }}>
-                    Owner: {sys.leader}
-                  </Typography>
-                }
-                sx={{ pb: 1 }}
-              />
-              <Divider sx={{ borderColor: COLOR.border }} />
-              <CardContent sx={{ pt: 1.75, pb: 2, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', '&:last-child': { pb: 2 } }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                  <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary }}>
-                    Link state
-                  </Typography>
-                  <Chip
-                    icon={sys.isOnline ? <CloudDone /> : <CloudOff />}
-                    label={sys.isOnline ? "Connected" : "Offline"}
-                    size="small"
-                    sx={statusChipSx(sys.isOnline)}
-                  />
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary }}>
-                    Records synced
-                  </Typography>
-                  <Typography sx={{ ...TYPE.metric, color: sys.totalRecordsCount > 0 ? COLOR.navy : COLOR.textMuted }}>
-                    {sys.totalRecordsCount}
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
+            <Grid item key={sys.id} xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+              <Card
+                onClick={() => setSelectedSystem(sys)}
+                sx={{
+                  borderRadius: 2, bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}`,
+                  borderLeft: `3px solid ${sys.isOnline ? COLOR.success : COLOR.neutral}`,
+                  transition: 'box-shadow 0.15s ease, transform 0.15s ease',
+                  width: '100%', display: 'flex', flexDirection: 'column',
+                  cursor: 'pointer',
+                  '&:hover': { transform: 'translateY(-2px)', boxShadow: SHADOW.card },
+                  '&:focus-visible': { outline: `2px solid ${COLOR.navy}`, outlineOffset: 2 }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-label={`View details for ${sys.label}`}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedSystem(sys); } }}
+              >
+                <CardHeader
+                  avatar={
+                    <Avatar variant="rounded" sx={{
+                      bgcolor: sys.isOnline ? COLOR.successBg : COLOR.neutralBg,
+                      color: sys.isOnline ? COLOR.success : COLOR.neutral,
+                      width: 40, height: 40, borderRadius: 1.25
+                    }}>
+                      {sys.icon}
+                    </Avatar>
+                  }
+                  title={
+                    <Typography sx={{ ...TYPE.cardTitle, color: COLOR.textPrimary, textAlign: 'left' }}>
+                      {sys.label}
+                    </Typography>
+                  }
+                  subheader={
+                    <Typography sx={{ ...TYPE.label, color: COLOR.textMuted, textAlign: 'left' }}>
+                      Owner: {sys.leader}
+                    </Typography>
+                  }
+                  sx={{ pb: 1 }}
+                />
+                <Divider sx={{ borderColor: COLOR.border }} />
+                <CardContent sx={{ pt: 1.75, pb: 2, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', '&:last-child': { pb: 2 } }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                    <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary }}>
+                      Link state
+                    </Typography>
+                    <Chip
+                      icon={sys.isOnline ? <CloudDone /> : <CloudOff />}
+                      label={sys.isOnline ? "Connected" : "Offline"}
+                      size="small"
+                      sx={statusChipSx(sys.isOnline)}
+                    />
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <Typography sx={{ ...TYPE.label, color: COLOR.textSecondary }}>
+                      Records synced
+                    </Typography>
+                    <Typography sx={{ ...TYPE.metric, color: sys.totalRecordsCount > 0 ? COLOR.navy : COLOR.textMuted }}>
+                      {sys.totalRecordsCount}
+                    </Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
           ))}
-        </Box>
+        </Grid>
 
         {/* Report generation */}
         <Paper sx={{
-          p: { xs: 2.25, sm: 3 }, mb: 4, borderRadius: 2, display: 'flex', flexDirection: { xs: 'column', sm: 'row' },
+          p: 3, mb: 4, borderRadius: 2, display: 'flex', flexDirection: { xs: 'column', sm: 'row' },
           justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 2,
           bgcolor: COLOR.panelTint, border: `1px solid ${COLOR.border}`
         }}>
@@ -560,7 +469,7 @@ export default function AdminDashboard() {
             disabled={generating}
             variant="contained"
             disableElevation
-            sx={{ ...btnPrimary, whiteSpace: 'nowrap', width: { xs: '100%', sm: 'auto' } }}
+            sx={{ ...btnPrimary, whiteSpace: 'nowrap' }}
           >
             {generating ? 'Compiling summary…' : 'Download PDF summary'}
           </Button>
@@ -572,7 +481,7 @@ export default function AdminDashboard() {
         </Typography>
 
         <Paper sx={{
-          p: { xs: 2, sm: 2.5 }, mb: 3, borderRadius: 2, bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}`,
+          p: 2.5, mb: 3, borderRadius: 2, bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}`,
           display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', width: { xs: '100%', md: 'auto' } }}>
@@ -633,162 +542,90 @@ export default function AdminDashboard() {
           </Button>
         </Paper>
 
-        {/* Logs — table on tablet/desktop, stacked cards on phone. A horizontally-scrolling table on a
-            360px screen is unreadable no matter how the columns are tuned, so below `sm` we swap to a
-            card list that keeps timestamp, subsystem, status and payload each on their own line. */}
-        {isMobile ? (
-          <Stack spacing={1.5} sx={{ mb: 1 }}>
-            {data.recentActivity.length === 0 ? (
-              <Paper sx={{ p: 4, borderRadius: 2, textAlign: 'center', bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}` }}>
-                <ListAlt sx={{ fontSize: 28, color: COLOR.border, mb: 1 }} />
-                <Typography sx={{ ...TYPE.body, color: COLOR.textMuted }}>
-                  {filtersActive
-                    ? 'No log entries match the selected filters.'
-                    : 'No stream activity yet. Waiting for member node handshakes…'}
-                </Typography>
-                {filtersActive && (
-                  <Button onClick={resetFilters} size="small" sx={{ mt: 1, textTransform: 'none', fontWeight: 600, fontFamily: FONT_BODY, color: COLOR.navy }}>
-                    Reset filters
-                  </Button>
-                )}
-              </Paper>
-            ) : (
-              data.recentActivity.map((log, index) => {
-                const isSuccess = log.status === 'SUCCESS';
-                return (
-                  <Paper
-                    key={log._id || index}
-                    onClick={() => setViewingPayload(log)}
-                    sx={{
-                      p: 2, borderRadius: 2, bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}`,
-                      borderLeft: `3px solid ${isSuccess ? COLOR.success : COLOR.danger}`, cursor: 'pointer',
-                      display: 'flex', flexDirection: 'column', gap: 1
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography sx={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: '0.85rem', color: COLOR.textPrimary }}>
-                        {CHOSEN_SUBSYSTEMS.find(sys => sys.id === log.systemName)?.label || log.systemName?.replace(/([A-Z])/g, ' $1').trim()}
-                      </Typography>
-                      <Chip
-                        label={log.status}
-                        size="small"
-                        sx={{
-                          fontWeight: 600, fontFamily: FONT_BODY, borderRadius: '6px', fontSize: '0.7rem',
-                          color: isSuccess ? COLOR.success : COLOR.danger,
-                          bgcolor: isSuccess ? COLOR.successBg : COLOR.dangerBg,
-                        }}
-                      />
-                    </Box>
-                    <Typography sx={{ ...TYPE.mono, color: COLOR.textMuted }}>
-                      {formatLogTimestamp(log)}
-                    </Typography>
-                    <Box
-                      component="code"
-                      sx={{
-                        fontFamily: FONT_MONO, fontSize: '0.72rem', bgcolor: COLOR.panelTint, p: '6px 10px',
-                        borderRadius: 1.5, color: COLOR.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap', border: `1px solid ${COLOR.border}`
-                      }}
-                    >
-                      {JSON.stringify(log.payloadReceived || {})}
-                    </Box>
-                  </Paper>
-                );
-              })
-            )}
-          </Stack>
-        ) : (
-          <TableContainer component={Paper} sx={{ borderRadius: 2, overflowX: 'auto', bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}` }}>
-            <Table sx={{ minWidth: 680 }}>
-              <TableHead sx={{ backgroundColor: COLOR.panelTint }}>
+        {/* Logs Table */}
+        <TableContainer component={Paper} sx={{ borderRadius: 2, overflowX: 'auto', overflowY: 'hidden', bgcolor: COLOR.panel, border: `1px solid ${COLOR.border}` }}>
+          <Table sx={{ minWidth: 640 }}>
+            <TableHead sx={{ backgroundColor: COLOR.panelTint }}>
+              <TableRow>
+                {['Timestamp', 'Origin Subsystem', 'Gateway Status', 'Payload Signature'].map(h => (
+                  <TableCell key={h} sx={{ fontFamily: FONT_BODY, fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.5px', textTransform: 'uppercase', color: COLOR.textSecondary, borderColor: COLOR.border, py: 1.75 }}>
+                    {h}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.recentActivity.length === 0 ? (
                 <TableRow>
-                  <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.5px', textTransform: 'uppercase', color: COLOR.textSecondary, borderColor: COLOR.border, py: 2, pl: 3, width: '18%' }}>
-                    Timestamp
-                  </TableCell>
-                  <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.5px', textTransform: 'uppercase', color: COLOR.textSecondary, borderColor: COLOR.border, py: 2, width: '26%' }}>
-                    Origin Subsystem
-                  </TableCell>
-                  <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.5px', textTransform: 'uppercase', color: COLOR.textSecondary, borderColor: COLOR.border, py: 2, width: '16%' }}>
-                    Gateway Status
-                  </TableCell>
-                  <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.5px', textTransform: 'uppercase', color: COLOR.textSecondary, borderColor: COLOR.border, py: 2, pr: 3, width: '40%' }}>
-                    Payload Signature
+                  <TableCell colSpan={4} align="center" sx={{ py: 7, borderColor: COLOR.border }}>
+                    <ListAlt sx={{ fontSize: 28, color: COLOR.border, mb: 1 }} />
+                    <Typography sx={{ ...TYPE.body, color: COLOR.textMuted }}>
+                      {filtersActive
+                        ? 'No log entries match the selected filters.'
+                        : 'No stream activity yet. Waiting for member node handshakes…'}
+                    </Typography>
+                    {filtersActive && (
+                      <Button
+                        onClick={resetFilters}
+                        size="small"
+                        sx={{ mt: 1, textTransform: 'none', fontWeight: 600, fontFamily: FONT_BODY, color: COLOR.navy }}
+                      >
+                        Reset filters
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
-              </TableHead>
-              <TableBody>
-                {data.recentActivity.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} align="center" sx={{ py: 7, borderColor: COLOR.border }}>
-                      <ListAlt sx={{ fontSize: 28, color: COLOR.border, mb: 1 }} />
-                      <Typography sx={{ ...TYPE.body, color: COLOR.textMuted }}>
-                        {filtersActive
-                          ? 'No log entries match the selected filters.'
-                          : 'No stream activity yet. Waiting for member node handshakes…'}
-                      </Typography>
-                      {filtersActive && (
-                        <Button
-                          onClick={resetFilters}
-                          size="small"
-                          sx={{ mt: 1, textTransform: 'none', fontWeight: 600, fontFamily: FONT_BODY, color: COLOR.navy }}
-                        >
-                          Reset filters
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  data.recentActivity.map((log, index) => {
-                    const timestampValue = log.timestamp || log.createdAt;
-                    let formattedTime = 'N/A';
-                    if (timestampValue) {
-                      const date = new Date(timestampValue);
-                      formattedTime = isNaN(date.getTime()) ? 'N/A' : date.toLocaleTimeString();
-                    }
-                    const isSuccess = log.status === 'SUCCESS';
+              ) : (
+                data.recentActivity.map((log, index) => {
+                  const timestampValue = log.timestamp || log.createdAt;
+                  let formattedTime = 'N/A';
+                  if (timestampValue) {
+                    const date = new Date(timestampValue);
+                    formattedTime = isNaN(date.getTime()) ? 'N/A' : date.toLocaleTimeString();
+                  }
+                  const isSuccess = log.status === 'SUCCESS';
 
-                    return (
-                      <TableRow key={log._id || index} hover sx={{ '&:hover': { bgcolor: COLOR.panelTint } }}>
-                        <TableCell sx={{ ...TYPE.mono, color: COLOR.textSecondary, borderColor: COLOR.border, py: 2, pl: 3 }}>
-                          {formattedTime}
-                        </TableCell>
-                        <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: '0.85rem', color: COLOR.textPrimary, textAlign: 'left', borderColor: COLOR.border, py: 2 }}>
-                          {CHOSEN_SUBSYSTEMS.find(sys => sys.id === log.systemName)?.label || log.systemName?.replace(/([A-Z])/g, ' $1').trim()}
-                        </TableCell>
-                        <TableCell sx={{ borderColor: COLOR.border, py: 2 }}>
-                          <Chip
-                            label={log.status}
-                            size="small"
-                            sx={{
-                              fontWeight: 600, fontFamily: FONT_BODY, borderRadius: '6px', fontSize: '0.7rem',
-                              color: isSuccess ? COLOR.success : COLOR.danger,
-                              bgcolor: isSuccess ? COLOR.successBg : COLOR.dangerBg,
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell sx={{ borderColor: COLOR.border, py: 2, pr: 3 }}>
-                          <Box
-                            onClick={() => setViewingPayload(log)}
-                            component="code"
-                            sx={{
-                              fontFamily: FONT_MONO, fontSize: '0.75rem', bgcolor: COLOR.panelTint, p: '6px 12px',
-                              borderRadius: 1.5, color: COLOR.textSecondary, display: 'inline-block',
-                              maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                              border: `1px solid ${COLOR.border}`, cursor: 'pointer',
-                              '&:hover': { borderColor: COLOR.navy, bgcolor: COLOR.panel, color: COLOR.navy }
-                            }}
-                          >
-                            {JSON.stringify(log.payloadReceived || {})}
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
+                  return (
+                    <TableRow key={log._id || index} hover sx={{ '&:hover': { bgcolor: COLOR.panelTint } }}>
+                      <TableCell sx={{ ...TYPE.mono, color: COLOR.textSecondary, borderColor: COLOR.border, py: 1.5 }}>
+                        {formattedTime}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: '0.85rem', color: COLOR.textPrimary, textAlign: 'left', borderColor: COLOR.border, py: 1.5 }}>
+                        {CHOSEN_SUBSYSTEMS.find(sys => sys.id === log.systemName)?.label || log.systemName?.replace(/([A-Z])/g, ' $1').trim()}
+                      </TableCell>
+                      <TableCell sx={{ borderColor: COLOR.border, py: 1.5 }}>
+                        <Chip
+                          label={log.status}
+                          size="small"
+                          sx={{
+                            fontWeight: 600, fontFamily: FONT_BODY, borderRadius: '6px', fontSize: '0.7rem',
+                            color: isSuccess ? COLOR.success : COLOR.danger,
+                            bgcolor: isSuccess ? COLOR.successBg : COLOR.dangerBg,
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ borderColor: COLOR.border, py: 1.5 }}>
+                        <Box
+                          onClick={() => setViewingPayload(log)}
+                          component="code"
+                          sx={{
+                            fontFamily: FONT_MONO, fontSize: '0.75rem', bgcolor: COLOR.panelTint, p: '4px 10px',
+                            borderRadius: 1.5, color: COLOR.textSecondary, display: 'inline-block',
+                            maxWidth: { xs: '220px', sm: '450px' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            border: `1px solid ${COLOR.border}`, cursor: 'pointer',
+                            '&:hover': { borderColor: COLOR.navy, bgcolor: COLOR.panel, color: COLOR.navy }
+                          }}
+                        >
+                          {JSON.stringify(log.payloadReceived || {})}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
       </Box>
 
       {/* Subsystem detail dialog — single close affordance (top-right X) instead of a duplicate footer button */}
@@ -877,16 +714,16 @@ export default function AdminDashboard() {
       >
         {viewingPayload && (
           <>
-            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, pr: 6 }}>
-              <Box sx={{ minWidth: 0 }}>
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
                 <Typography sx={TYPE.dialogTitle}>
                   Payload Diagnostic View
                 </Typography>
-                <Typography sx={{ ...TYPE.label, color: COLOR.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Typography sx={{ ...TYPE.label, color: COLOR.textMuted }}>
                   Integration Log ID: {viewingPayload._id}
                 </Typography>
               </Box>
-              <IconButton onClick={() => setViewingPayload(null)} sx={{ position: 'absolute', right: 12, top: 12, color: COLOR.textMuted }}>
+              <IconButton onClick={() => setViewingPayload(null)} sx={{ color: COLOR.textMuted }}>
                 <Close fontSize="small" />
               </IconButton>
             </DialogTitle>
